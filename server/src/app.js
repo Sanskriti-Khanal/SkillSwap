@@ -4,6 +4,8 @@ const morgan = require('morgan');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const securityMiddleware = require('./middleware/security');
+const { apiSlowDown } = require('./middleware/rateLimiter');
+
 
 
 const app = express();
@@ -36,8 +38,12 @@ app.get('/', (req, res) => {
   res.json({ message: 'SkillSwap API Foundation is running securely.' });
 });
 
+// Apply slow-down to all /api routes
+app.use('/api', apiSlowDown);
+
 // Authentication Routes
 app.use('/api/auth', require('./routes/auth'));
+
 
 // Error handling middleware
 app.use((err, req, res, next) => {
