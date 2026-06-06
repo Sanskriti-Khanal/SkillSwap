@@ -30,8 +30,33 @@ const userSchema = new mongoose.Schema({
   },
   locked_until: {
     type: Date,
+  },
+  role: {
+    type: String,
+    enum: ['learner', 'tutor', 'both', 'admin'],
+    default: 'learner',
+  },
+  bio: {
+    type: String,
+    maxLength: 500,
+  },
+  skills: {
+    type: [String],
+    default: [],
+  },
+  hourly_rate: {
+    type: Number,
+    min: 0,
+  },
+  availability_days: {
+    type: [String],
+    default: [],
+  },
+  profile_photo_url: {
+    type: String,
   }
 }, { timestamps: true });
+
 
 module.exports = mongoose.model('User', userSchema);
 

@@ -50,8 +50,12 @@ app.use('/api', apiSlowDown);
 // Authentication Routes
 app.use('/api/auth', require('./routes/auth'));
 
+// User Routes
+app.use('/api/users', require('./routes/users'));
+
 // Admin Routes
 app.use('/api/admin', require('./routes/admin'));
+
 
 // Error handling middleware
 

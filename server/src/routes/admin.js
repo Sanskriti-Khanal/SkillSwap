@@ -2,32 +2,22 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const BlockedIP = require('../models/BlockedIP');
 const authMiddleware = require('../middleware/auth');
+const requireRole = require('../middleware/rbac');
 const User = require('../models/User');
 
 const router = express.Router();
 
-// Basic admin check middleware (for this exercise, assuming user has an isAdmin field or similar. Since we don't have it, we just check a mock condition or add it on the fly. Let's assume we add an `role` field to User later. For now, we simulate).
-const adminMiddleware = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user || user.email !== 'admin@skillswap.com') { // Hardcoded admin check for demonstration since role isn't defined
-      return res.status(403).json({ msg: 'Admin role required' });
-    }
-    next();
-  } catch (err) {
-    res.status(500).send('Server Error');
-  }
-};
+// Protect all admin routes
+router.use(authMiddleware, requireRole('admin'));
 
 // @route   POST /api/admin/block-ip
 // @desc    Block an IP address
 // @access  Private/Admin
 router.post('/block-ip', [
-  authMiddleware,
-  adminMiddleware,
   body('ip_address', 'IP address is required').not().isEmpty(),
   body('reason', 'Reason is required').not().isEmpty()
 ], async (req, res) => {
+
   const errors = validationResult(req);
   if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
 
@@ -53,4 +43,62 @@ router.post('/block-ip', [
   }
 });
 
+// @route   GET /api/admin/users
+// @desc    Get paginated list of all users
+// @access  Private/Admin
+router.get('/users', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const users = await User.find()
+      .select('-password_hash -mfa_secret -__v')
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await User.countDocuments();
+
+    res.json({
+      users,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalUsers: total
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   PATCH /api/admin/users/:id/role
+// @desc    Change a user's role
+// @access  Private/Admin
+router.patch('/users/:id/role', [
+  body('role', 'Valid role is required').isIn(['learner', 'tutor', 'both', 'admin'])
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
+
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    user.role = req.body.role;
+    await user.save();
+
+    res.json({ msg: 'User role updated successfully', role: user.role });
+  } catch (err) {
+    console.error(err.message);
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    res.status(500).send('Server Error');
+  }
+});
+
 module.exports = router;
+
