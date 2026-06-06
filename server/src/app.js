@@ -2,7 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const securityMiddleware = require('./middleware/security');
+
 
 const app = express();
 
@@ -24,9 +26,10 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Parse JSON bodies
+// Parse JSON bodies and cookies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // Basic route
 app.get('/', (req, res) => {
