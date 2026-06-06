@@ -117,8 +117,28 @@ router.post('/login', authRateLimiter, [
     let user = await User.findOne({ email });
     if(!user) { return res.status(400).json({ msg: 'Invalid Credentials' }); }
 
+    // Check if account is locked
+    if (user.locked_until && user.locked_until > Date.now()) {
+      return res.status(400).json({ msg: 'Invalid Credentials' }); // Generic error
+    }
+
     const isMatch = await bcrypt.compare(password, user.password_hash);
-    if(!isMatch) { return res.status(400).json({ msg: 'Invalid Credentials' }); }
+    
+    if(!isMatch) {
+      user.failed_attempts += 1;
+      if (user.failed_attempts >= 5) {
+        user.locked_until = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      }
+      await user.save();
+      return res.status(400).json({ msg: 'Invalid Credentials' });
+    }
+
+    // Reset lockout counters on successful login
+    if (user.failed_attempts > 0 || user.locked_until) {
+      user.failed_attempts = 0;
+      user.locked_until = undefined;
+      await user.save();
+    }
 
     // If MFA is enabled, we don't issue tokens here. We return a response indicating MFA is required.
     if(user.mfa_enabled) {

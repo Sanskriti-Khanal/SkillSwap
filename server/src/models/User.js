@@ -23,7 +23,15 @@ const userSchema = new mongoose.Schema({
   password_changed_at: {
     type: Date,
     default: Date.now,
+  },
+  failed_attempts: {
+    type: Number,
+    default: 0,
+  },
+  locked_until: {
+    type: Date,
   }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);
+
