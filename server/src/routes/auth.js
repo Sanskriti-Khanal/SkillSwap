@@ -334,4 +334,16 @@ router.post('/password/reset', [
   }
 });
 
+// @route   POST /api/auth/password-strength
+// @desc    Calculate password strength
+// @access  Public
+router.post('/password-strength', (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.json({ score: 0, feedback: { warning: '', suggestions: [] } });
+  }
+  const strength = zxcvbn(password);
+  res.json({ score: strength.score, feedback: strength.feedback });
+});
+
 module.exports = router;
