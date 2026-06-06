@@ -4,8 +4,13 @@ const bcrypt = require('bcrypt');
 const zxcvbn = require('zxcvbn');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const speakeasy = require('speakeasy');
+const qrcode = require('qrcode');
 const User = require('../models/User');
 const PasswordHistory = require('../models/PasswordHistory');
+const { encrypt, decrypt } = require('../utils/encryption');
+const authMiddleware = require('../middleware/auth');
+
 
 
 const router = express.Router();
@@ -180,5 +185,153 @@ router.post('/logout', (req, res) => {
   res.json({ msg: 'Logged out successfully' });
 });
 
-module.exports = router;
+// @route   POST /api/auth/mfa/setup
+// @desc    Setup MFA for logged in user
+// @access  Private
+router.post('/mfa/setup', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
 
+    const secret = speakeasy.generateSecret({
+      name: `SkillSwap (${user.email})`
+    });
+
+    user.mfa_secret = encrypt(secret.base32);
+    await user.save();
+
+    qrcode.toDataURL(secret.otpauth_url, (err, data_url) => {
+      if (err) {
+        return res.status(500).json({ msg: 'Error generating QR code' });
+      }
+      res.json({
+        secret: secret.base32,
+        qrCodeUrl: data_url
+      });
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   POST /api/auth/mfa/verify
+// @desc    Verify MFA token (used during login)
+// @access  Public
+router.post('/mfa/verify', async (req, res) => {
+  const { userId, token } = req.body;
+
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    if (!user.mfa_enabled && !user.mfa_secret) {
+       return res.status(400).json({ msg: 'MFA not setup for this user' });
+    }
+
+    const decryptedSecret = decrypt(user.mfa_secret);
+
+    const verified = speakeasy.totp.verify({
+      secret: decryptedSecret,
+      encoding: 'base32',
+      token
+    });
+
+    if (verified) {
+      // If this is the first time verifying (setup phase), enable MFA
+      if (!user.mfa_enabled) {
+        user.mfa_enabled = true;
+        await user.save();
+      }
+
+      // Generate tokens
+      const fingerprint = getFingerprint(req);
+      const { accessToken, refreshToken } = generateTokens(user, fingerprint);
+
+      res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'Strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000
+      });
+
+      res.json({ accessToken });
+    } else {
+      res.status(400).json({ msg: 'Invalid token' });
+    }
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   POST /api/auth/password/reset
+// @desc    Reset password (requires valid JWT, meaning user is logged in but might be blocked by 403 on other routes)
+// @access  Private
+// We skip the standard authMiddleware here because authMiddleware blocks requests if password_changed_at > 90 days.
+// We need a custom middleware or just verify token inline for this specific route.
+router.post('/password/reset', [
+  body('newPassword')
+    .isLength({ min: 12 }).withMessage('Password must be at least 12 characters long')
+    .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
+    .matches(/[a-z]/).withMessage('Password must contain at least one lowercase letter')
+    .matches(/[0-9]/).withMessage('Password must contain at least one number')
+    .matches(/[\W_]/).withMessage('Password must contain at least one special character')
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
+
+  const token = req.header('x-auth-token') || req.header('Authorization')?.replace('Bearer ', '');
+  if (!token) { return res.status(401).json({ msg: 'No token, authorization denied' }); }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret123');
+    
+    // Verify fingerprint
+    const fingerprint = getFingerprint(req);
+    if (decoded.fingerprint !== fingerprint) {
+      return res.status(401).json({ msg: 'Token validation failed' });
+    }
+
+    const user = await User.findById(decoded.user.id);
+    if (!user) { return res.status(404).json({ msg: 'User not found' }); }
+
+    const { newPassword } = req.body;
+
+    // Check last 5 passwords
+    const history = await PasswordHistory.find({ userId: user.id }).sort({ createdAt: -1 }).limit(5);
+    for (let record of history) {
+      const isMatch = await bcrypt.compare(newPassword, record.password_hash);
+      if (isMatch) {
+        return res.status(400).json({ msg: 'Password has been used recently. Please choose a different password.' });
+      }
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(12);
+    const password_hash = await bcrypt.hash(newPassword, salt);
+
+    // Update user
+    user.password_hash = password_hash;
+    user.password_changed_at = Date.now();
+    await user.save();
+
+    // Add to history
+    await PasswordHistory.create({
+      userId: user.id,
+      password_hash
+    });
+
+    res.json({ msg: 'Password updated successfully' });
+
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+module.exports = router;
