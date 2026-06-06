@@ -59,6 +59,9 @@ app.use('/api/listings', require('./routes/listings'));
 // Booking Routes
 app.use('/api/bookings', require('./routes/bookings'));
 
+// Review Routes
+app.use('/api/reviews', require('./routes/reviews'));
+
 // Admin Routes
 app.use('/api/admin', require('./routes/admin'));
 

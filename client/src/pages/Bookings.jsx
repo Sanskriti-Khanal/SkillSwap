@@ -56,6 +56,9 @@ export default function Bookings() {
                     <p style={{ fontSize: '0.875rem' }}>
                       Tutor: {booking.tutor_id?.email} | Learner: {booking.learner_id?.email}
                     </p>
+                    {(booking.status === 'confirmed' || booking.status === 'completed') && new Date(booking.requested_time) < new Date() && (
+                      <button className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', marginTop: '0.5rem' }}>Leave Review</button>
+                    )}
                   </div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, color: getStatusColor(booking.status), textTransform: 'uppercase' }}>
                     {booking.status}
