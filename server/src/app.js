@@ -53,6 +53,9 @@ app.use('/api/auth', require('./routes/auth'));
 // User Routes
 app.use('/api/users', require('./routes/users'));
 
+// Listing Routes
+app.use('/api/listings', require('./routes/listings'));
+
 // Admin Routes
 app.use('/api/admin', require('./routes/admin'));
 

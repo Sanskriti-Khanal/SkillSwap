@@ -1,10 +1,27 @@
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import api from '../utils/api';
+
 export default function Listings() {
-  const mockListings = [
-    { id: 1, title: 'Senior UX Design Mentorship', author: 'Sarah Jenkins', price: '$80/hr', tag: 'Design' },
-    { id: 2, title: 'Fullstack Next.js Architecture', author: 'Markus Doe', price: '$120/hr', tag: 'Engineering' },
-    { id: 3, title: 'Startup Pitch Deck Review', author: 'Elena Rose', price: '$90/hr', tag: 'Business' },
-    { id: 4, title: 'Advanced Motion Graphics in AE', author: 'Chris T.', price: '$75/hr', tag: 'Video' },
-  ];
+  const [listings, setListings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState('');
+
+  const fetchListings = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get(`/listings${category ? `?skill_category=${category}` : ''}`);
+      setListings(res.data.listings);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchListings();
+  }, [category]);
 
   return (
     <div className="page-container animate-fade-in">
@@ -14,26 +31,44 @@ export default function Listings() {
           <p className="subtitle" style={{ textAlign: 'left', marginBottom: 0, marginTop: '0.25rem' }}>Find the perfect mentor to upskill.</p>
         </div>
         <div style={{ display: 'flex', gap: '1rem' }}>
-          <input type="text" placeholder="Search skills..." style={{ width: '250px' }} />
-          <button className="btn btn-secondary">Filter</button>
+          <select 
+            value={category} 
+            onChange={(e) => setCategory(e.target.value)}
+            style={{ padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', outline: 'none' }}
+          >
+            <option value="">All Categories</option>
+            <option value="Programming">Programming</option>
+            <option value="Design">Design</option>
+            <option value="Business">Business</option>
+          </select>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
-        {mockListings.map(listing => (
-          <div key={listing.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', cursor: 'pointer' }}>
-            <div style={{ aspectRatio: '16/9', backgroundColor: 'var(--surface-color)', borderRadius: '4px' }}></div>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{listing.tag}</span>
-                <span style={{ fontWeight: 600 }}>{listing.price}</span>
+      {loading ? (
+        <p>Loading listings...</p>
+      ) : listings.length === 0 ? (
+        <p>No listings found.</p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
+          {listings.map(listing => (
+            <Link to={`/listings/${listing._id}`} key={listing._id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', cursor: 'pointer', textDecoration: 'none', color: 'inherit' }}>
+              <div style={{ aspectRatio: '16/9', backgroundColor: 'var(--surface-color)', borderRadius: '4px', overflow: 'hidden' }}>
+                {listing.tutor_id?.profile_photo_url && (
+                  <img src={listing.tutor_id.profile_photo_url} alt="Tutor" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                )}
               </div>
-              <h3 style={{ fontSize: '1.125rem', marginBottom: '0.25rem' }}>{listing.title}</h3>
-              <p style={{ fontSize: '0.875rem' }}>by {listing.author}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{listing.skill_category}</span>
+                  <span style={{ fontWeight: 600 }}>NPR {listing.price_per_session}</span>
+                </div>
+                <h3 style={{ fontSize: '1.125rem', marginBottom: '0.25rem' }}>{listing.title}</h3>
+                <p style={{ fontSize: '0.875rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{listing.description}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
