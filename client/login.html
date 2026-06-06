@@ -8,7 +8,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/style.css">
+  <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 </head>
+
 <body>
   <div class="auth-container">
     <h1>Welcome Back</h1>
@@ -27,7 +29,12 @@
         <input type="password" id="password" name="password" required placeholder="••••••••••••">
       </div>
 
+      <div class="form-group">
+        <div class="h-captcha" data-sitekey="10000000-ffff-ffff-ffff-000000000001"></div>
+      </div>
+
       <button type="submit" class="btn" id="loginBtn">Log In</button>
+
       
       <div class="text-center mt-4">
         <a href="register.html" class="link">Don't have an account? Sign up</a>

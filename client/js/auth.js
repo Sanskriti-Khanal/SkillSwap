@@ -71,12 +71,19 @@ if (registerForm) {
     e.preventDefault();
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
+    
+    // Get hCaptcha token
+    let captchaToken = '';
+    const hcaptchaFrame = registerForm.querySelector('[name="h-captcha-response"]');
+    if (hcaptchaFrame) {
+      captchaToken = hcaptchaFrame.value;
+    }
 
     try {
       const res = await fetch(`${API_BASE_URL}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, 'h-captcha-response': captchaToken })
       });
 
       const data = await res.json();
@@ -86,15 +93,21 @@ if (registerForm) {
         registerForm.reset();
         strengthBar.style.width = '0%';
         strengthText.textContent = '';
+        if(window.hcaptcha) hcaptcha.reset();
+      } else if (res.status === 429) {
+        showAlert('Too many attempts. Please try again later.', 'error');
       } else {
         const msg = data.errors ? data.errors.map(err => err.msg).join(', ') : data.msg;
         showAlert(msg || 'Registration failed', 'error');
+        if(window.hcaptcha) hcaptcha.reset();
       }
     } catch (err) {
       showAlert('Server error', 'error');
+      if(window.hcaptcha) hcaptcha.reset();
     }
   });
 }
+
 
 // --- Login & MFA Logic ---
 const loginForm = document.getElementById('loginForm');
@@ -107,16 +120,24 @@ if (loginForm) {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
+    // Get hCaptcha token
+    let captchaToken = '';
+    const hcaptchaFrame = loginForm.querySelector('[name="h-captcha-response"]');
+    if (hcaptchaFrame) {
+      captchaToken = hcaptchaFrame.value;
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, 'h-captcha-response': captchaToken })
       });
 
       const data = await res.json();
 
       if (res.ok) {
+
         if (data.mfaRequired) {
           // Hide login, show MFA
           loginForm.classList.add('hidden');
@@ -129,15 +150,20 @@ if (loginForm) {
           showAlert('Logged in successfully!', 'success');
           // Redirect or change UI
         }
+      } else if (res.status === 429) {
+        showAlert('Too many login attempts. Please try again later.', 'error');
       } else {
         const msg = data.errors ? data.errors.map(err => err.msg).join(', ') : data.msg;
         showAlert(msg || 'Login failed', 'error');
+        if(window.hcaptcha) hcaptcha.reset();
       }
     } catch (err) {
       showAlert('Server error', 'error');
+      if(window.hcaptcha) hcaptcha.reset();
     }
   });
 }
+
 
 if (mfaForm) {
   mfaForm.addEventListener('submit', async (e) => {
