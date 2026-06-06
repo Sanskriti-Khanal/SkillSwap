@@ -1,10 +1,32 @@
+import { useState, useEffect } from 'react';
+import api from '../utils/api';
+
 export default function Bookings() {
-  const timeline = [
-    { id: 1, date: 'Today, 2:00 PM', title: 'Advanced React Patterns', person: 'Alex Chen', status: 'Upcoming', statusColor: 'var(--text-primary)' },
-    { id: 2, date: 'Yesterday, 10:00 AM', title: 'Portfolio Review', person: 'Maria Garcia', status: 'Completed', statusColor: 'var(--success)' },
-    { id: 3, date: 'May 14, 3:30 PM', title: 'Figma Mastery', person: 'David Kim', status: 'Completed', statusColor: 'var(--success)' },
-    { id: 4, date: 'May 10, 1:00 PM', title: 'Node.js Architecture', person: 'Sarah Jenkins', status: 'Cancelled', statusColor: 'var(--error)' }
-  ];
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        const res = await api.get('/bookings');
+        setBookings(res.data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBookings();
+  }, []);
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'completed': return 'var(--success)';
+      case 'cancelled': return 'var(--error)';
+      case 'confirmed': return '#3B82F6'; // Blue
+      default: return 'var(--text-primary)'; // pending
+    }
+  };
 
   return (
     <div className="page-container animate-fade-in" style={{ maxWidth: '800px' }}>
@@ -12,26 +34,38 @@ export default function Bookings() {
         <h2>Bookings History</h2>
       </div>
 
-      <div style={{ position: 'relative', paddingLeft: '1rem' }}>
-        <div style={{ position: 'absolute', left: '15px', top: '10px', bottom: '10px', width: '1px', backgroundColor: 'var(--border-color)' }}></div>
-        
-        {timeline.map((item, index) => (
-          <div key={item.id} style={{ position: 'relative', paddingLeft: '2.5rem', marginBottom: index === timeline.length - 1 ? 0 : '2.5rem' }}>
-            <div style={{ position: 'absolute', left: '-5px', top: '4px', width: '11px', height: '11px', borderRadius: '50%', backgroundColor: 'var(--bg-color)', border: `2px solid ${item.statusColor}` }}></div>
-            
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>{item.date}</p>
-            <div className="card" style={{ padding: '1.25rem', marginTop: '0.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <h3 style={{ fontSize: '1rem', marginBottom: '0.25rem' }}>{item.title}</h3>
-                  <p style={{ fontSize: '0.875rem' }}>with {item.person}</p>
+      {loading ? (
+        <p>Loading bookings...</p>
+      ) : bookings.length === 0 ? (
+        <p>No bookings found.</p>
+      ) : (
+        <div style={{ position: 'relative', paddingLeft: '1rem' }}>
+          <div style={{ position: 'absolute', left: '15px', top: '10px', bottom: '10px', width: '1px', backgroundColor: 'var(--border-color)' }}></div>
+          
+          {bookings.map((booking, index) => (
+            <div key={booking._id} style={{ position: 'relative', paddingLeft: '2.5rem', marginBottom: index === bookings.length - 1 ? 0 : '2.5rem' }}>
+              <div style={{ position: 'absolute', left: '-5px', top: '4px', width: '11px', height: '11px', borderRadius: '50%', backgroundColor: 'var(--bg-color)', border: `2px solid ${getStatusColor(booking.status)}` }}></div>
+              
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                {new Date(booking.requested_time).toLocaleString()}
+              </p>
+              <div className="card" style={{ padding: '1.25rem', marginTop: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1rem', marginBottom: '0.25rem' }}>{booking.listing_id?.title || 'Unknown Listing'}</h3>
+                    <p style={{ fontSize: '0.875rem' }}>
+                      Tutor: {booking.tutor_id?.email} | Learner: {booking.learner_id?.email}
+                    </p>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: getStatusColor(booking.status), textTransform: 'uppercase' }}>
+                    {booking.status}
+                  </span>
                 </div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: item.statusColor }}>{item.status}</span>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

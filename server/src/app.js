@@ -56,6 +56,9 @@ app.use('/api/users', require('./routes/users'));
 // Listing Routes
 app.use('/api/listings', require('./routes/listings'));
 
+// Booking Routes
+app.use('/api/bookings', require('./routes/bookings'));
+
 // Admin Routes
 app.use('/api/admin', require('./routes/admin'));
 
