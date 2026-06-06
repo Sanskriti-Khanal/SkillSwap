@@ -6,6 +6,10 @@ const securityMiddleware = require('./middleware/security');
 
 const app = express();
 
+// Connect to MongoDB
+const connectDB = require('./config/db');
+connectDB();
+
 // HTTP request logging
 app.use(morgan('dev'));
 
@@ -28,6 +32,9 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/', (req, res) => {
   res.json({ message: 'SkillSwap API Foundation is running securely.' });
 });
+
+// Authentication Routes
+app.use('/api/auth', require('./routes/auth'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
