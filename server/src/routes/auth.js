@@ -11,6 +11,8 @@ const PasswordHistory = require('../models/PasswordHistory');
 const { encrypt, decrypt } = require('../utils/encryption');
 const authMiddleware = require('../middleware/auth');
 const { authRateLimiter } = require('../middleware/rateLimiter');
+const captchaMiddleware = require('../middleware/captcha');
+
 
 
 
@@ -31,8 +33,9 @@ const passwordValidation = [
 // @route   POST /api/auth/register
 // @desc    Register user
 // @access  Public
-router.post('/register', authRateLimiter, passwordValidation, async (req, res) => {
+router.post('/register', authRateLimiter, captchaMiddleware, passwordValidation, async (req, res) => {
   const errors = validationResult(req);
+
 
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
@@ -104,10 +107,11 @@ const generateTokens = (user, fingerprint) => {
 // @route   POST /api/auth/login
 // @desc    Authenticate user & get token
 // @access  Public
-router.post('/login', authRateLimiter, [
+router.post('/login', authRateLimiter, captchaMiddleware, [
   body('email', 'Please include a valid email').isEmail(),
   body('password', 'Password is required').exists()
 ], async (req, res) => {
+
   const errors = validationResult(req);
 
   if(!errors.isEmpty()){ return res.status(400).json({ errors: errors.array() }); }

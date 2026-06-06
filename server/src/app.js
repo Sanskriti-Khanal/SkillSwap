@@ -5,6 +5,8 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const securityMiddleware = require('./middleware/security');
 const { apiSlowDown } = require('./middleware/rateLimiter');
+const ipBlock = require('./middleware/ipBlock');
+
 
 
 
@@ -28,10 +30,14 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
+// IP Blocking Middleware
+app.use(ipBlock);
+
 // Parse JSON bodies and cookies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
 
 // Basic route
 app.get('/', (req, res) => {
@@ -44,8 +50,11 @@ app.use('/api', apiSlowDown);
 // Authentication Routes
 app.use('/api/auth', require('./routes/auth'));
 
+// Admin Routes
+app.use('/api/admin', require('./routes/admin'));
 
 // Error handling middleware
+
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Internal Server Error' });
