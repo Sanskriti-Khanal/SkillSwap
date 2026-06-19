@@ -25,7 +25,7 @@ app.use(securityMiddleware.helmetConfig);
 
 // CORS configuration (restrict to localhost:3000 in dev)
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' ? 'https://skillswap.example.com' : 'http://localhost:3000',
+  origin: process.env.NODE_ENV === 'production' ? 'https://skillswap.example.com' : (process.env.CLIENT_URL || 'http://localhost:5173'),
   optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
@@ -33,7 +33,10 @@ app.use(cors(corsOptions));
 // IP Blocking Middleware
 app.use(ipBlock);
 
-// Parse JSON bodies and cookies
+// Stripe webhook must receive the raw body for signature verification — mount BEFORE express.json()
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }), require('./routes/payments'));
+
+// Parse JSON bodies and cookies (all other routes)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -64,6 +67,9 @@ app.use('/api/reviews', require('./routes/reviews'));
 
 // Admin Routes
 app.use('/api/admin', require('./routes/admin'));
+
+// Payment Routes (non-webhook — webhook already mounted above with raw body parser)
+app.use('/api/payments', require('./routes/payments'));
 
 
 // Error handling middleware

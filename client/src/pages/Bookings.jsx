@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 
 function ReviewModal({ booking, onClose, onSubmitted }) {
@@ -64,6 +65,7 @@ function ReviewModal({ booking, onClose, onSubmitted }) {
 }
 
 export default function Bookings() {
+  const navigate = useNavigate();
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reviewTarget, setReviewTarget] = useState(null);
@@ -138,15 +140,26 @@ export default function Bookings() {
                     <p style={{ fontSize: '0.875rem' }}>
                       Tutor: {booking.tutor_id?.email} | Learner: {booking.learner_id?.email}
                     </p>
-                    {canReview(booking) && (
-                      <button
-                        className="btn btn-secondary"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', marginTop: '0.5rem' }}
-                        onClick={() => setReviewTarget(booking)}
-                      >
-                        Leave Review
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                      {booking.payment_status === 'unpaid' && booking.status === 'pending' && (
+                        <button
+                          className="btn btn-primary"
+                          style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
+                          onClick={() => navigate(`/payments?bookingId=${booking._id}`)}
+                        >
+                          Pay Now
+                        </button>
+                      )}
+                      {canReview(booking) && (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                          onClick={() => setReviewTarget(booking)}
+                        >
+                          Leave Review
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, color: getStatusColor(booking.status), textTransform: 'uppercase' }}>
                     {booking.status}

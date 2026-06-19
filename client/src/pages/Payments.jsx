@@ -1,50 +1,113 @@
+import { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import api from '../utils/api';
+
 export default function Payments() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const bookingId = searchParams.get('bookingId');
+
+  const [booking, setBooking] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!bookingId) {
+      setError('No booking ID provided.');
+      setLoading(false);
+      return;
+    }
+    const fetchBooking = async () => {
+      try {
+        const res = await api.get(`/bookings/${bookingId}`);
+        setBooking(res.data);
+      } catch (err) {
+        setError(err.response?.data?.msg || 'Failed to load booking.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBooking();
+  }, [bookingId]);
+
+  const handlePay = async () => {
+    setError('');
+    setRedirecting(true);
+    try {
+      const res = await api.post('/payments/create-checkout-session', { booking_id: bookingId });
+      // Redirect to Stripe Checkout
+      window.location.href = res.data.url;
+    } catch (err) {
+      setError(err.response?.data?.msg || 'Failed to start payment session.');
+      setRedirecting(false);
+    }
+  };
+
+  if (loading) return <div className="page-container">Loading booking...</div>;
+
+  if (error && !booking) {
+    return (
+      <div className="page-container animate-fade-in" style={{ maxWidth: '600px' }}>
+        <p style={{ color: 'var(--error)' }}>{error}</p>
+        <button className="btn btn-secondary" style={{ marginTop: '1rem' }} onClick={() => navigate('/bookings')}>
+          Back to Bookings
+        </button>
+      </div>
+    );
+  }
+
+  const listing = booking?.listing_id;
+  const alreadyPaid = booking?.payment_status === 'paid';
+
   return (
     <div className="page-container animate-fade-in" style={{ maxWidth: '600px' }}>
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
         <h2>Complete your booking</h2>
-        <p className="subtitle" style={{ marginTop: '0.5rem' }}>Advanced React Patterns with Alex Chen</p>
+        <p className="subtitle" style={{ marginTop: '0.5rem' }}>{listing?.title}</p>
       </div>
 
       <div className="card" style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px dashed var(--border-color)' }}>
-          <span>1 Hour Session</span>
-          <span style={{ fontWeight: 600 }}>$120.00</span>
+          <span>{listing?.duration_minutes} min session</span>
+          <span style={{ fontWeight: 600 }}>NPR {listing?.price_per_session}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>Platform Fee</span>
-          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>$6.00</span>
+          <span style={{ color: 'var(--text-secondary)' }}>Scheduled</span>
+          <span style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>
+            {booking?.requested_time ? new Date(booking.requested_time).toLocaleString() : '—'}
+          </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.25rem' }}>
           <span style={{ fontWeight: 600 }}>Total</span>
-          <span style={{ fontWeight: 600 }}>$126.00</span>
+          <span style={{ fontWeight: 600 }}>NPR {listing?.price_per_session}</span>
         </div>
       </div>
 
-      <div className="card">
-        <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Payment Details</h3>
-        <form>
-          <div className="form-group">
-            <label>Card Information</label>
-            <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius)', padding: '0.75rem 1rem', background: 'var(--bg-color)' }}>
-              <input type="text" placeholder="Card number" style={{ border: 'none', padding: 0, width: '100%', outline: 'none' }} />
-              <div style={{ display: 'flex', gap: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                <span>MM/YY</span>
-                <span>CVC</span>
-              </div>
-            </div>
-          </div>
-          <div className="form-group" style={{ marginBottom: '2rem' }}>
-            <label>Name on card</label>
-            <input type="text" placeholder="John Doe" />
-          </div>
-          <button type="button" className="btn btn-primary" style={{ width: '100%' }}>Pay $126.00</button>
-        </form>
-        <div style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-          <span style={{ display: 'inline-block', width: '12px', height: '12px', background: 'var(--text-secondary)', borderRadius: '50%' }}></span>
-          Secured by Stripe
+      {alreadyPaid ? (
+        <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
+          <p style={{ color: 'var(--success)', fontWeight: 600, marginBottom: '1rem' }}>This booking has already been paid.</p>
+          <button className="btn btn-secondary" onClick={() => navigate('/bookings')}>View Bookings</button>
         </div>
-      </div>
+      ) : (
+        <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
+          {error && <p style={{ color: 'var(--error)', fontSize: '0.875rem', marginBottom: '1rem' }}>{error}</p>}
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+            You will be redirected to Stripe to complete payment securely.
+          </p>
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%' }}
+            onClick={handlePay}
+            disabled={redirecting}
+          >
+            {redirecting ? 'Redirecting to Stripe...' : `Pay NPR ${listing?.price_per_session}`}
+          </button>
+          <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+            Secured by Stripe
+          </div>
+        </div>
+      )}
     </div>
   );
 }
