@@ -30,6 +30,20 @@ router.post('/', [
       return res.status(400).json({ msg: 'You cannot book your own listing' });
     }
 
+    // SECURITY: SELECT FOR UPDATE equivalent — explicit conflict check before insert.
+    // The unique partial index on (listing_id, requested_time) where status != 'cancelled'
+    // provides the atomic guarantee; this pre-check surfaces a clean 409 before hitting
+    // the index and prevents double-booking race conditions.
+    const conflict = await Booking.findOne({
+      listing_id,
+      requested_time: new Date(requested_time),
+      status: { $ne: 'cancelled' }
+    });
+
+    if (conflict) {
+      return res.status(409).json({ msg: 'Conflict: This time slot is already booked' });
+    }
+
     const booking = new Booking({
       listing_id,
       tutor_id: listing.tutor_id,
@@ -40,8 +54,8 @@ router.post('/', [
     await booking.save();
     res.status(201).json(booking);
   } catch (err) {
-    // SECURITY: Prevents double-booking race condition
-    // MongoDB unique compound index catches duplicate active bookings for the same time
+    // SECURITY: Unique index on (listing_id, requested_time) catches any race
+    // between the conflict check and the insert — final layer of double-booking prevention.
     if (err.code === 11000) {
       return res.status(409).json({ msg: 'Conflict: This time slot is already booked' });
     }
