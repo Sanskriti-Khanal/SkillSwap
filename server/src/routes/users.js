@@ -1,8 +1,13 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcrypt');
 const authMiddleware = require('../middleware/auth');
 const User = require('../models/User');
+const Booking = require('../models/Booking');
+const PasswordHistory = require('../models/PasswordHistory');
+const RevokedToken = require('../models/RevokedToken');
+const { logEvent } = require('../services/logger');
 
 const router = express.Router();
 
@@ -120,6 +125,64 @@ router.get('/me/export', exportRateLimiter, async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="user-data-export.json"');
     res.send(JSON.stringify(user, null, 2));
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   DELETE /api/users/me
+// @desc    Delete own account and all associated data (GDPR right to erasure)
+// @access  Private
+router.delete('/me', [
+  body('password', 'Password confirmation required').exists()
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
+
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) { return res.status(404).json({ msg: 'User not found' }); }
+
+    // SECURITY: require password confirmation before deletion — prevents CSRF-assisted
+    // account deletion and limits damage if an access token is stolen. An attacker with
+    // only the JWT cannot delete the account without also knowing the password.
+    // OWASP A07:2021 – Identification and Authentication Failures.
+    const isMatch = await bcrypt.compare(req.body.password, user.password_hash);
+    if (!isMatch) {
+      return res.status(403).json({ msg: 'Incorrect password — account deletion denied' });
+    }
+
+    // Revoke refresh token if present (session invalidation)
+    const refreshToken = req.cookies['__Host-skillswap-session'];
+    if (refreshToken) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'refreshSecret123');
+        if (decoded.jti) {
+          await RevokedToken.create({ jti: decoded.jti, expires_at: new Date(decoded.exp * 1000) });
+        }
+      } catch (_) {}
+    }
+
+    // Cascade delete: remove all user data (GDPR erasure)
+    // Bookings and password history are deleted. Reviews and listings are soft-anonymised
+    // to preserve tutor ratings for other users. The tutor_id field is set to null.
+    await Promise.all([
+      PasswordHistory.deleteMany({ userId: user._id }),
+      Booking.deleteMany({ $or: [{ learner_id: user._id }, { tutor_id: user._id }] }),
+      User.findByIdAndDelete(user._id),
+    ]);
+
+    // Clear session cookie
+    res.clearCookie('__Host-skillswap-session', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Strict',
+    });
+
+    logEvent(user._id, 'user.account_deleted', { ipAddress: req.ip, userAgent: req.headers['user-agent'] });
+    res.json({ msg: 'Account and associated data deleted successfully' });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');

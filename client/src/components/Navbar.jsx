@@ -1,45 +1,48 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { authApi } from '../utils/api';
 
 export default function Navbar() {
   const location = useLocation();
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+  const navigate = useNavigate();
+  const isAuthPage = ['/login', '/register'].includes(location.pathname);
+  const isLoggedIn = !!localStorage.getItem('accessToken');
+
+  const handleLogout = async () => {
+    try { await authApi.post('/logout'); } catch (_) {}
+    localStorage.removeItem('accessToken');
+    navigate('/login');
+  };
+
+  const isActive = (path) => location.pathname === path ? 'nav-link active' : 'nav-link';
 
   return (
-    <nav style={{
-      position: 'sticky',
-      top: 0,
-      zIndex: 50,
-      backgroundColor: 'rgba(255, 255, 255, 0.8)',
-      backdropFilter: 'blur(12px)',
-      borderBottom: '1px solid var(--border-color)',
-      padding: '0.75rem 1.5rem',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between'
-    }}>
-      <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, fontSize: '1.25rem', letterSpacing: '-0.02em' }}>
-        <div style={{ width: '24px', height: '24px', backgroundColor: 'var(--text-primary)', borderRadius: '4px' }}></div>
-        SkillSwap
+    <nav className="navbar">
+      <Link to="/" className="navbar-brand" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+        <img src="/images/image copy 2.png" alt="SkillSwap Logo" style={{ height: 48, width: 'auto' }} />
+        <span style={{ color: '#1A1512', fontSize: '1.5rem', fontWeight: 600, letterSpacing: '-0.02em' }}>SkillSwap</span>
       </Link>
-      
-      {!isAuthPage && (
-        <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
-          <Link to="/dashboard" style={{ color: location.pathname === '/dashboard' ? 'var(--text-primary)' : '' }}>Dashboard</Link>
-          <Link to="/listings" style={{ color: location.pathname === '/listings' ? 'var(--text-primary)' : '' }}>Listings</Link>
-          <Link to="/bookings" style={{ color: location.pathname === '/bookings' ? 'var(--text-primary)' : '' }}>Bookings</Link>
+
+      {!isAuthPage && isLoggedIn && (
+        <div className="navbar-nav">
+          <Link to="/dashboard" className={isActive('/dashboard')}>Dashboard</Link>
+          <Link to="/listings"  className={isActive('/listings')}>Browse</Link>
+          <Link to="/bookings"  className={isActive('/bookings')}>Bookings</Link>
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div className="navbar-actions">
         {isAuthPage ? (
           <>
-            <Link to="/login" style={{ fontSize: '0.875rem', fontWeight: 500 }}>Log in</Link>
-            <Link to="/register" className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>Sign up</Link>
+            <Link to="/login"    className="btn btn-ghost btn-sm">Log in</Link>
+            <Link to="/register" className="btn btn-primary btn-sm">Sign up</Link>
+          </>
+        ) : isLoggedIn ? (
+          <>
+            <Link to="/profile" className="avatar" title="Profile">ME</Link>
+            <button className="btn btn-secondary btn-sm" onClick={handleLogout}>Log out</button>
           </>
         ) : (
-          <>
-            <Link to="/profile" style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 600 }}>US</Link>
-          </>
+          <Link to="/login" className="btn btn-primary btn-sm">Log in</Link>
         )}
       </div>
     </nav>

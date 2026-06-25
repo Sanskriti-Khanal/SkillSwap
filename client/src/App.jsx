@@ -1,5 +1,6 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
+import Home from './pages/Home';
 import Register from './pages/Register';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -15,19 +16,20 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Navigate to="/login" />} />
+        {/* Public landing page — no Layout/Navbar wrapper */}
+        <Route path="/" element={<Home />} />
+
+        {/* All app pages use Layout (Navbar + Outlet) */}
+        <Route element={<Layout />}>
           <Route path="register" element={<Register />} />
           <Route path="login" element={<Login />} />
 
-          {/* App routes */}
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="profile" element={<Profile />} />
           <Route path="listings" element={<Listings />} />
           <Route path="listings/:id" element={<ListingDetail />} />
           <Route path="bookings" element={<Bookings />} />
 
-          {/* Payment flow */}
           <Route path="payments" element={<Payments />} />
           <Route path="payment-success" element={<PaymentSuccess />} />
           <Route path="payment-cancel" element={<PaymentCancel />} />

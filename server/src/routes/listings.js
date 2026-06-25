@@ -1,14 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const xss = require('xss-clean');
 const authMiddleware = require('../middleware/auth');
 const requireRole = require('../middleware/rbac');
 const Listing = require('../models/Listing');
+const { logEvent } = require('../services/logger');
 
 const router = express.Router();
-
-// Apply XSS sanitizer to all inputs in this router
-router.use(xss());
 
 // @route   POST /api/listings
 // @desc    Create a skill listing
@@ -38,6 +35,7 @@ router.post('/', [
     });
 
     await listing.save();
+    logEvent(req.user.id, 'listing.created', { ipAddress: req.ip, listingId: listing._id, title: listing.title });
     res.status(201).json(listing);
   } catch (err) {
     console.error(err.message);
@@ -56,7 +54,17 @@ router.get('/', async (req, res) => {
 
     const query = {};
     if (req.query.skill_category) {
-      query.skill_category = req.query.skill_category;
+      // SECURITY: cast to string — prevents NoSQL object injection via { $ne: null }
+      query.skill_category = String(req.query.skill_category);
+    }
+
+    // VULNERABLE code (do NOT use):
+    // query.title = req.query.keyword  ← attacker sends keyword[%24ne]=x → { title: { $ne: 'x' } } → returns all docs
+    //
+    // FIXED: cast to string and escape special regex chars before building $regex query
+    if (req.query.keyword) {
+      const escaped = String(req.query.keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.title = { $regex: escaped, $options: 'i' };
     }
 
     const listings = await Listing.find(query)
@@ -120,6 +128,7 @@ router.patch('/:id', [authMiddleware, requireRole('tutor', 'both')], async (req,
       return res.status(404).json({ msg: 'Listing not found or you are not authorized to edit it' });
     }
 
+    logEvent(req.user.id, 'listing.updated', { ipAddress: req.ip, listingId: listing._id });
     res.json(listing);
   } catch (err) {
     console.error(err.message);
@@ -140,6 +149,7 @@ router.delete('/:id', [authMiddleware, requireRole('tutor', 'both')], async (req
       return res.status(404).json({ msg: 'Listing not found or you are not authorized to delete it' });
     }
 
+    logEvent(req.user.id, 'listing.deleted', { ipAddress: req.ip, listingId: req.params.id });
     res.json({ msg: 'Listing removed' });
   } catch (err) {
     console.error(err.message);

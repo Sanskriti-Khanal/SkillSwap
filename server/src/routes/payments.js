@@ -4,6 +4,7 @@ const authMiddleware = require('../middleware/auth');
 const requireRole = require('../middleware/rbac');
 const Booking = require('../models/Booking');
 const Listing = require('../models/Listing');
+const { logEvent } = require('../services/logger');
 
 const router = express.Router();
 
@@ -107,6 +108,7 @@ router.post('/webhook', async (req, res) => {
           payment_status: 'paid',
           status: 'confirmed',
         });
+        logEvent(null, 'payment.completed', { bookingId, stripeSessionId: session.id });
       }
     }
 
@@ -123,6 +125,7 @@ router.post('/webhook', async (req, res) => {
       if (booking) {
         booking.payment_status = 'payment_failed';
         await booking.save();
+        logEvent(null, 'payment.failed', { bookingId: booking._id });
       }
     }
 
@@ -172,6 +175,11 @@ router.post('/refund/:bookingId', [authMiddleware, requireRole('admin')], async 
     booking.status = 'refunded';
     await booking.save();
 
+    logEvent(req.user.id, 'payment.refunded', {
+      ipAddress: req.ip,
+      bookingId: booking._id,
+      refundId: refund.id,
+    });
     res.json({ msg: 'Refund issued successfully', refund_id: refund.id });
   } catch (err) {
     console.error('Refund error:', err.message);

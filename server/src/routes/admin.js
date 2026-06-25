@@ -4,6 +4,7 @@ const BlockedIP = require('../models/BlockedIP');
 const authMiddleware = require('../middleware/auth');
 const requireRole = require('../middleware/rbac');
 const User = require('../models/User');
+const { logEvent, verifyAuditChain } = require('../services/logger');
 
 const router = express.Router();
 
@@ -36,6 +37,7 @@ router.post('/block-ip', [
     });
 
     await blocked.save();
+    logEvent(req.user.id, 'admin.ip_blocked', { ipAddress: req.ip, blockedIp: ip_address, reason });
     res.json({ msg: 'IP blocked successfully', blocked });
   } catch (err) {
     console.error(err.message);
@@ -87,15 +89,39 @@ router.patch('/users/:id/role', [
       return res.status(404).json({ msg: 'User not found' });
     }
 
+    const previousRole = user.role;
     user.role = req.body.role;
     await user.save();
 
+    logEvent(req.user.id, 'admin.role_changed', {
+      ipAddress: req.ip,
+      targetUserId: user._id,
+      previousRole,
+      newRole: user.role,
+    });
     res.json({ msg: 'User role updated successfully', role: user.role });
   } catch (err) {
     console.error(err.message);
     if (err.kind === 'ObjectId') {
       return res.status(404).json({ msg: 'User not found' });
     }
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   GET /api/admin/audit-chain/verify
+// @desc    Verify tamper-evident audit log chain integrity
+// @access  Private/Admin
+router.get('/audit-chain/verify', async (req, res) => {
+  try {
+    const result = await verifyAuditChain();
+    if (!result.valid) {
+      logEvent(req.user.id, 'admin.audit_chain_tampered', { ipAddress: req.ip, brokenAt: result.brokenAt });
+      return res.status(200).json({ valid: false, message: `Chain integrity broken at sequence ${result.brokenAt}` });
+    }
+    res.json({ valid: true, totalEntries: result.totalEntries, message: 'Audit log chain is intact' });
+  } catch (err) {
+    console.error(err.message);
     res.status(500).send('Server Error');
   }
 });

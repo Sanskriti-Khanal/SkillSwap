@@ -8,110 +8,93 @@ export default function ListingDetail() {
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [requestedTime, setRequestedTime] = useState('');
-  const [booking, setBooking] = useState(false);
-  const [bookingMsg, setBookingMsg] = useState('');
-  const [bookingError, setBookingError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [alert, setAlert] = useState(null);
+  const [booked, setBooked] = useState(false);
 
   useEffect(() => {
-    const fetchListing = async () => {
-      try {
-        const res = await api.get(`/listings/${id}`);
-        setListing(res.data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchListing();
+    api.get(`/listings/${id}`).then(r => setListing(r.data)).catch(() => {}).finally(() => setLoading(false));
   }, [id]);
 
   const handleBook = async () => {
-    setBookingMsg('');
-    setBookingError('');
-    if (!requestedTime) {
-      setBookingError('Please select a date and time.');
-      return;
-    }
-    setBooking(true);
+    setAlert(null);
+    if (!requestedTime) { setAlert({ type: 'alert-error', msg: 'Please select a date and time.' }); return; }
+    setBusy(true);
     try {
       await api.post('/bookings', { listing_id: id, requested_time: requestedTime });
-      setBookingMsg('Booking created! Check your Bookings page.');
+      setAlert({ type: 'alert-success', msg: 'Booking created! Go to My Bookings to pay.' });
+      setBooked(true);
     } catch (err) {
-      const data = err.response?.data;
-      setBookingError(data?.msg || 'Failed to create booking.');
-    } finally {
-      setBooking(false);
-    }
+      setAlert({ type: 'alert-error', msg: err.response?.data?.msg || 'Failed to create booking.' });
+    } finally { setBusy(false); }
   };
 
-  if (loading) return <div className="page-container">Loading...</div>;
-  if (!listing) return <div className="page-container">Listing not found</div>;
+  if (loading) return <div className="page"><p>Loading…</p></div>;
+  if (!listing) return <div className="page"><p>Listing not found.</p></div>;
+
+  const tutor = listing.tutor_id;
 
   return (
-    <div className="page-container animate-fade-in" style={{ maxWidth: '800px' }}>
-      <button onClick={() => navigate('/listings')} className="btn btn-secondary" style={{ marginBottom: '2rem' }}>&larr; Back</button>
+    <div className="page fade-up" style={{ maxWidth: 900 }}>
+      <button className="btn btn-ghost btn-sm" onClick={() => navigate('/listings')} style={{ marginBottom: 24 }}>← Back to listings</button>
 
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{listing.skill_category}</span>
-        <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>•</span>
-        <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{listing.duration_minutes} minutes</span>
-      </div>
+      <div style={{ display: 'flex', gap: 40, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {/* Left: details */}
+        <div style={{ flex: '2 1 400px' }}>
+          <span className="badge badge-orange" style={{ marginBottom: 12 }}>{listing.skill_category}</span>
+          <h1 style={{ marginBottom: 16 }}>{listing.title}</h1>
 
-      <h1 style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>{listing.title}</h1>
-
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '3rem', paddingBottom: '2rem', borderBottom: '1px solid var(--border-color)' }}>
-        <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'var(--surface-color)', overflow: 'hidden' }}>
-          {listing.tutor_id?.profile_photo_url && (
-            <img src={listing.tutor_id.profile_photo_url} alt="Tutor" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          {tutor && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28, padding: '16px 20px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+              <div className="tutor-avatar" style={{ width: 44, height: 44, fontSize: '.875rem' }}>
+                {tutor.email?.[0]?.toUpperCase() ?? 'T'}
+              </div>
+              <div>
+                <strong style={{ fontSize: '.9375rem', color: 'var(--dark)' }}>{tutor.email}</strong>
+                {tutor.bio && <p style={{ fontSize: '.8125rem', marginTop: 2 }}>{tutor.bio}</p>}
+              </div>
+            </div>
           )}
-        </div>
-        <div>
-          <p style={{ fontWeight: 600 }}>{listing.tutor_id?.email || 'Tutor'}</p>
-          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{listing.tutor_id?.bio || 'Experienced Mentor'}</p>
-        </div>
-      </div>
 
-      <div style={{ display: 'flex', gap: '3rem' }}>
-        <div style={{ flex: 2 }}>
-          <h3>About this session</h3>
-          <p style={{ marginTop: '1rem', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{listing.description}</p>
+          <div className="divider" />
+          <h3 style={{ margin: '24px 0 12px' }}>About this session</h3>
+          <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{listing.description}</p>
+
+          <div style={{ display: 'flex', gap: 16, marginTop: 24, flexWrap: 'wrap' }}>
+            <div className="stat-card" style={{ flex: '1 1 140px' }}>
+              <div className="stat-label">Duration</div>
+              <div className="stat-value" style={{ fontSize: '1.25rem' }}>{listing.duration_minutes} min</div>
+            </div>
+            <div className="stat-card" style={{ flex: '1 1 140px' }}>
+              <div className="stat-label">Price</div>
+              <div className="stat-value" style={{ fontSize: '1.25rem' }}>NPR {listing.price_per_session?.toLocaleString()}</div>
+            </div>
+          </div>
         </div>
 
-        <div style={{ flex: 1 }}>
-          <div className="card" style={{ position: 'sticky', top: '100px' }}>
-            <p style={{ fontSize: '2rem', fontWeight: 600, marginBottom: '1rem' }}>NPR {listing.price_per_session}</p>
-
-            <div className="form-group" style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Select Date &amp; Time</label>
-              <input
-                type="datetime-local"
-                value={requestedTime}
-                onChange={(e) => setRequestedTime(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
-                style={{ width: '100%', padding: '0.6rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '0.875rem' }}
-              />
+        {/* Right: booking card */}
+        <div style={{ flex: '1 1 260px', position: 'sticky', top: 80 }}>
+          <div className="card" style={{ padding: 28 }}>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: '.8125rem', color: 'var(--muted)', marginBottom: 2 }}>Price per session</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--dark)' }}>NPR {listing.price_per_session?.toLocaleString()}</div>
             </div>
 
-            {bookingMsg && <p style={{ color: 'var(--success)', fontSize: '0.875rem', marginBottom: '0.75rem' }}>{bookingMsg}</p>}
-            {bookingError && <p style={{ color: 'var(--error)', fontSize: '0.875rem', marginBottom: '0.75rem' }}>{bookingError}</p>}
+            {alert && <div className={`alert ${alert.type}`}>{alert.msg}</div>}
 
-            <button
-              className="btn btn-primary"
-              style={{ width: '100%' }}
-              onClick={handleBook}
-              disabled={booking}
-            >
-              {booking ? 'Booking...' : 'Book Session'}
-            </button>
-
-            {bookingMsg && (
-              <button
-                className="btn btn-secondary"
-                style={{ width: '100%', marginTop: '0.75rem' }}
-                onClick={() => navigate('/bookings')}
-              >
-                View My Bookings
+            {!booked ? (
+              <>
+                <div className="form-group">
+                  <label>Select date & time</label>
+                  <input type="datetime-local" value={requestedTime} onChange={e => setRequestedTime(e.target.value)} min={new Date().toISOString().slice(0, 16)} />
+                </div>
+                <button className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={handleBook} disabled={busy}>
+                  {busy ? 'Booking…' : 'Book session'}
+                </button>
+              </>
+            ) : (
+              <button className="btn btn-secondary btn-lg" style={{ width: '100%' }} onClick={() => navigate('/bookings')}>
+                View my bookings →
               </button>
             )}
           </div>

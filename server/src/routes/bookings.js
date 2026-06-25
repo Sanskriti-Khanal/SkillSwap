@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const authMiddleware = require('../middleware/auth');
 const Booking = require('../models/Booking');
 const Listing = require('../models/Listing');
+const { logEvent } = require('../services/logger');
 
 const router = express.Router();
 
@@ -52,6 +53,7 @@ router.post('/', [
     });
 
     await booking.save();
+    logEvent(req.user.id, 'booking.created', { ipAddress: req.ip, bookingId: booking._id, listingId: listing._id });
     res.status(201).json(booking);
   } catch (err) {
     // SECURITY: Unique index on (listing_id, requested_time) catches any race
@@ -125,9 +127,20 @@ router.patch('/:id/confirm', async (req, res) => {
       return res.status(400).json({ msg: `Cannot confirm a booking that is ${booking.status}` });
     }
 
+    // SECURITY: free session bypass prevention — payment_status is verified from the database.
+    // Never trust a client-supplied payment flag. Without this check a learner could call
+    // PATCH /api/bookings/:id/confirm directly and receive a confirmed session without paying.
+    //
+    // VULNERABLE code (do NOT use):
+    //   if (req.body.paid) { booking.status = 'confirmed'; }   ← client controls this
+    if (booking.payment_status !== 'paid') {
+      return res.status(402).json({ msg: 'Payment required: complete Stripe checkout before confirming' });
+    }
+
     booking.status = 'confirmed';
     await booking.save();
 
+    logEvent(req.user.id, 'booking.confirmed', { ipAddress: req.ip, bookingId: booking._id });
     res.json(booking);
   } catch (err) {
     console.error(err.message);
@@ -155,6 +168,7 @@ router.patch('/:id/cancel', async (req, res) => {
     booking.status = 'cancelled';
     await booking.save();
 
+    logEvent(req.user.id, 'booking.cancelled', { ipAddress: req.ip, bookingId: booking._id });
     res.json(booking);
   } catch (err) {
     console.error(err.message);

@@ -105,10 +105,76 @@ The Stripe refund is issued first. If the subsequent database update fails, the 
 
 ## Logging (Phase 7)
 
-*(To be completed in Phase 7.)*
+### Why logs must never contain raw tokens or password hashes
+If a token appears in a log file, an attacker with log-read access can replay it. If a bcrypt hash appears in a log, it can be subjected to offline brute-force. The `scrubPII` function in `logger.js` strips the fields `password`, `token`, `secret`, `refreshToken`, `cardNumber`, `cvv`, and `totpSecret` from any metadata object before the log entry is written. This is enforced by a Jest regression test (`tests/logger.test.js`).
+
+### Log rotation and protection in production
+- Use a log rotation tool such as `winston-daily-rotate-file` or an external log aggregator (e.g. Datadog, CloudWatch, Loki) so that `app.log` does not grow unbounded.
+- Restrict filesystem permissions on `server/logs/` to the process user only (`chmod 700`).
+- Never commit log files — `server/logs/` is in `.gitignore`. The `logs/.gitkeep` file tracks the directory itself.
+- In production, ship logs to a centralised, tamper-evident store rather than the local filesystem.
+
+### Brute-force alert
+Failed login attempts are recorded in a `LoginAttempt` collection with a 10-minute MongoDB TTL index. When 3 or more failed attempts from the same IP are detected within that window, a WARN-level log entry is written. In production, wire this to an email alert via `nodemailer` or SendGrid by adding a `transporter.sendMail()` call in the handler (see the comment in `server/src/routes/auth.js`).
 
 ---
 
 ## Pen Test Findings (Phase 8)
 
-*(To be completed in Phase 8.)*
+Six vulnerabilities were identified via white-box code review and fixed. Full details including CVSS v3.1 vectors, attack payloads, and retest evidence are in [`docs/pentest-findings.md`](pentest-findings.md).
+
+| # | Vulnerability | CVSS | Fix location |
+|---|---|---|---|
+| 1 | NoSQL injection — keyword search | 9.8 Critical | `listings.js` — string cast + regex escape |
+| 2 | Stored XSS — bio field | 8.0 High | `users.js` — added xss-clean middleware |
+| 3 | CSRF — booking endpoints | 8.8 High | `csrf.js` middleware + Axios interceptor |
+| 4 | Free session bypass — confirm without payment | 8.1 High | `bookings.js` — `payment_status === 'paid'` check |
+| 5 | CSP `unsafe-inline` in styleSrc | 6.1 Medium | `security.js` — removed unsafe-inline, added base-uri |
+| 6 | Cookie prefix missing | 5.9 Medium | `auth.js` — renamed to `__Host-skillswap-session` |
+
+---
+
+## Phase 9 — Distinction Hardening
+
+### Refresh Token Revocation List (JTI blacklist)
+Clearing the `__Host-skillswap-session` cookie on logout is client-side enforcement only. An attacker who copies the refresh token before logout can replay it within its 7-day lifetime. Fix: each token carries a `jti` (JWT ID, a 16-byte random hex string). On logout and on each rotation, the `jti` is stored in the `RevokedToken` MongoDB collection with a TTL index that auto-deletes entries after 7 days (matching the token lifetime). The `/refresh` endpoint rejects any token whose `jti` is revoked.
+
+**OWASP A07:2021** — Identification and Authentication Failures.
+
+### Role in JWT Payload
+The JWT payload previously contained only `{ user: { id } }`. The `rbac.js` middleware reads `req.user.role` — which was always `undefined`, meaning RBAC checks for `tutor` and `learner` roles silently failed. Fix: `generateTokens()` now includes `{ user: { id, role } }`. The 15-minute access token lifetime limits the window where a stale role (after demotion) could be exploited.
+
+### HaveIBeenPwned k-Anonymity Breach Check
+A password satisfying all complexity rules can still be in breach databases. `hibpService.js` implements the HIBP range API: only the first 5 hex characters of the password's SHA-1 hash are sent to the API; the full hash is never transmitted. Applied on both registration and password reset. Fails open (allows the operation) if the HIBP API is unreachable. **OWASP A07:2021**.
+
+### Progressive Lockout Backoff
+Previously: a flat 15-minute lockout after every 5 failures. Now: the lockout duration doubles with each consecutive lockout cycle (5 attempts → 15 min, 10 → 30 min, 15 → 60 min, capped at 120 min). This makes automated bypass attempts exponentially more costly while recovering automatically for genuine users.
+
+### express-mongo-sanitize
+Wired globally in `app.js` after body parsing. Strips MongoDB operator keys (`$where`, `$gt`, `$ne`, etc.) from `req.body`, `req.query`, and `req.params`. Provides defence-in-depth against NoSQL injection even if a route forgets to cast inputs to the expected type. Operators are replaced with `_` rather than silently removed to preserve the query shape for logging. **OWASP A03:2021** — Injection.
+
+### Tamper-Evident Audit Log (Hash Chaining)
+`AuditLog.js` is a MongoDB collection where each entry stores a SHA-256 hash of `(previous_hash | sequence | timestamp | userId | action | metadata)`. If any historical entry is modified or deleted, all subsequent hashes become invalid. The chain is verifiable via `GET /api/admin/audit-chain/verify` (admin-only). Inspired by certificate transparency and blockchain log integrity. **OWASP A09:2021** — Security Logging and Monitoring Failures.
+
+### Account Deletion (GDPR Right to Erasure)
+`DELETE /api/users/me` requires password confirmation (preventing CSRF-assisted deletion). It cascade-deletes password history and bookings, revokes the active refresh token, and clears the session cookie. **UK GDPR Article 17** — Right to Erasure.
+
+### Body Size Limit
+`express.json({ limit: '10kb' })` added globally. Without a size limit, an attacker could send a 100 MB JSON body to exhaust memory or CPU during JSON parsing. **OWASP A05:2021** — Security Misconfiguration.
+
+### Environment Variable Validation
+`validateEnv.js` runs before the Express app starts. In production, it exits with code 1 if any of `JWT_SECRET`, `JWT_REFRESH_SECRET`, `ENCRYPTION_KEY`, `MONGO_URI`, `STRIPE_SECRET_KEY`, or `STRIPE_WEBHOOK_SECRET` are missing. It also validates that `ENCRYPTION_KEY` is exactly 32 bytes and `JWT_SECRET` is at least 32 characters. Prevents silent fallback to insecure hardcoded defaults.
+
+### DevSecOps CI Pipeline
+`.github/workflows/security.yml` runs on every push and PR to `main`:
+- **npm audit** — flags HIGH/CRITICAL CVEs in dependencies (OWASP A06:2021)
+- **CodeQL** — GitHub's semantic SAST for JavaScript/Node.js
+- **Semgrep** — pattern-based SAST with `p/nodejs`, `p/owasp-top-ten`, and `p/jwt` rulesets
+- **Gitleaks** — secret scanning across full git history
+- **Trivy** — CVE scanning of the Docker image (base OS + npm packages)
+- **OWASP ZAP baseline** — passive DAST scan against the running server
+
+All HIGH/CRITICAL findings fail the build. This makes security a merge gate, not an afterthought.
+
+### STRIDE Threat Model
+Full threat model in `docs/threat-model.md` covering all six STRIDE categories, asset inventory, data flow diagram, trust boundaries, abuse cases, zero trust architecture mapping, and Argon2id migration strategy.

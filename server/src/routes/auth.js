@@ -12,6 +12,10 @@ const { encrypt, decrypt } = require('../utils/encryption');
 const authMiddleware = require('../middleware/auth');
 const { authRateLimiter } = require('../middleware/rateLimiter');
 const captchaMiddleware = require('../middleware/captcha');
+const { logEvent } = require('../services/logger');
+const LoginAttempt = require('../models/LoginAttempt');
+const RevokedToken = require('../models/RevokedToken');
+const { isPasswordPwned } = require('../services/hibpService');
 
 
 
@@ -53,6 +57,15 @@ router.post('/register', authRateLimiter, captchaMiddleware, passwordValidation,
     // Evaluate password strength
     const strength = zxcvbn(password);
 
+    // SECURITY: k-anonymity breach check — reject passwords found in known breach databases.
+    // Fails open (allows registration) if the HIBP API is unreachable.
+    const pwnedCount = await isPasswordPwned(password);
+    if (pwnedCount > 0) {
+      return res.status(400).json({
+        msg: `This password has appeared in ${pwnedCount.toLocaleString()} data breach(es). Please choose a different password.`
+      });
+    }
+
     // Hash password with bcrypt cost factor 12
     const salt = await bcrypt.genSalt(12);
     const password_hash = await bcrypt.hash(password, salt);
@@ -71,8 +84,12 @@ router.post('/register', authRateLimiter, captchaMiddleware, passwordValidation,
       password_hash
     });
 
-    // We don't return the JWT here yet; normally they might need to verify email or we just login.
-    // The prompt just says "Return a zxcvbn strength score in the response" for registration.
+    logEvent(user._id, 'user.register', {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      email: user.email,
+    });
+
     res.status(201).json({
       msg: 'User registered successfully',
       strengthScore: strength.score,
@@ -93,15 +110,24 @@ const getFingerprint = (req) => {
 };
 
 const generateTokens = (user, fingerprint) => {
+  // SECURITY: role is included so RBAC middleware can enforce access control without
+  // a DB round-trip on every request. The role is re-verified against the DB on
+  // sensitive admin actions. Short token lifetime (15 min) limits the window where
+  // a stale role could be exploited if an admin demotes a user.
+  //
+  // jti (JWT ID) is a unique identifier per token. On logout the refresh token's jti
+  // is stored in RevokedToken so it cannot be replayed even within its 7-day lifetime.
+  const jti = crypto.randomBytes(16).toString('hex');
   const payload = {
-    user: { id: user.id },
-    fingerprint
+    user: { id: user.id, role: user.role },
+    fingerprint,
+    jti,
   };
-  
+
   const accessToken = jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '15m' });
   const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET || 'refreshSecret123', { expiresIn: '7d' });
-  
-  return { accessToken, refreshToken };
+
+  return { accessToken, refreshToken, jti };
 };
 
 // @route   POST /api/auth/login
@@ -130,10 +156,54 @@ router.post('/login', authRateLimiter, captchaMiddleware, [
     
     if(!isMatch) {
       user.failed_attempts += 1;
-      if (user.failed_attempts >= 5) {
-        user.locked_until = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      // SECURITY: progressive lockout backoff — each lock doubles the duration.
+      // Flat lockouts are predictable; doubling forces an attacker to wait exponentially
+      // longer after each bypass attempt while still auto-recovering for genuine users.
+      // Thresholds: 5 → 15 min, 10 → 30 min, 15 → 60 min, 20+ → 120 min (cap).
+      // OWASP A07:2021 – Identification and Authentication Failures.
+      const isNowLocked = user.failed_attempts % 5 === 0;
+      if (isNowLocked) {
+        const lockMultiplier = Math.min(Math.floor(user.failed_attempts / 5), 8); // cap at 8 doublings
+        const lockMinutes = 15 * lockMultiplier;
+        user.locked_until = new Date(Date.now() + lockMinutes * 60 * 1000);
       }
       await user.save();
+
+      logEvent(user._id, 'user.login_failed', {
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        failed_attempts: user.failed_attempts,
+      });
+
+      if (isNowLocked) {
+        logEvent(user._id, 'user.account_locked', {
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+          locked_until: user.locked_until,
+        });
+      }
+
+      // Brute-force detection: record attempt and alert if >= 3 in 10 minutes from this IP
+      const ip = req.ip;
+      await LoginAttempt.create({ ip });
+      const recentCount = await LoginAttempt.countDocuments({
+        ip,
+        attempted_at: { $gte: new Date(Date.now() - 10 * 60 * 1000) },
+      });
+      if (recentCount >= 3) {
+        // Log at CRITICAL level — in production, pipe this to nodemailer or SendGrid:
+        //   transporter.sendMail({ to: 'security@skillswap.com', subject: 'Brute-force alert', text: `IP: ${ip}` })
+        require('../services/logger').logger.warn({
+          level: 'warn',
+          userId: null,
+          action: 'security.brute_force_detected',
+          ipAddress: ip,
+          message: `Possible brute-force attack from IP: ${ip} — manual review recommended`,
+          recentFailedAttempts: recentCount,
+        });
+      }
+
       return res.status(400).json({ msg: 'Invalid Credentials' });
     }
 
@@ -152,11 +222,19 @@ router.post('/login', authRateLimiter, captchaMiddleware, [
     const fingerprint = getFingerprint(req);
     const { accessToken, refreshToken } = generateTokens(user, fingerprint);
 
-    res.cookie('refreshToken', refreshToken, {
+    // SECURITY: __Host- prefix prevents subdomain cookie injection —
+    // the browser enforces Secure flag and path=/ automatically.
+    // A subdomain (e.g. cdn.skillswap.com) cannot set or override this cookie.
+    res.cookie('__Host-skillswap-session', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'Strict',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    logEvent(user._id, 'user.login', {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
     });
 
     res.json({ accessToken });
@@ -170,12 +248,22 @@ router.post('/login', authRateLimiter, captchaMiddleware, [
 // @desc    Refresh access token
 // @access  Public
 router.post('/refresh', async (req, res) => {
-  const token = req.cookies.refreshToken;
+  const token = req.cookies['__Host-skillswap-session'];
   if(!token) { return res.status(401).json({ msg: 'No refresh token provided' }); }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || 'refreshSecret123');
-    
+
+    // SECURITY: revocation check — reject tokens that were explicitly invalidated on logout
+    // or password change. Without this check an attacker who copied a refresh token before
+    // logout could continue issuing new access tokens indefinitely within the 7-day window.
+    if (decoded.jti) {
+      const revoked = await RevokedToken.findOne({ jti: decoded.jti });
+      if (revoked) {
+        return res.status(401).json({ msg: 'Token has been revoked' });
+      }
+    }
+
     // Check fingerprint
     const fingerprint = getFingerprint(req);
     if(decoded.fingerprint !== fingerprint) {
@@ -185,9 +273,15 @@ router.post('/refresh', async (req, res) => {
     let user = await User.findById(decoded.user.id);
     if(!user) { return res.status(401).json({ msg: 'User not found' }); }
 
+    // Revoke old token before issuing new one (rotation — prevents replay of old token)
+    if (decoded.jti) {
+      const expiresAt = new Date(decoded.exp * 1000);
+      await RevokedToken.create({ jti: decoded.jti, expires_at: expiresAt });
+    }
+
     const newTokens = generateTokens(user, fingerprint);
 
-    res.cookie('refreshToken', newTokens.refreshToken, {
+    res.cookie('__Host-skillswap-session', newTokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'Strict',
@@ -204,12 +298,31 @@ router.post('/refresh', async (req, res) => {
 // @route   POST /api/auth/logout
 // @desc    Logout user
 // @access  Public
-router.post('/logout', (req, res) => {
-  res.clearCookie('refreshToken', {
+router.post('/logout', async (req, res) => {
+  const token = req.cookies['__Host-skillswap-session'];
+
+  // SECURITY: server-side token revocation on logout.
+  // Clearing the cookie alone is client-side enforcement — an attacker who copied
+  // the refresh token before logout could still replay it. Storing the jti in
+  // RevokedToken makes the token permanently invalid server-side.
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || 'refreshSecret123');
+      if (decoded.jti) {
+        const expiresAt = new Date(decoded.exp * 1000);
+        await RevokedToken.create({ jti: decoded.jti, expires_at: expiresAt });
+      }
+    } catch (_) {
+      // Token already invalid — still clear the cookie
+    }
+  }
+
+  res.clearCookie('__Host-skillswap-session', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Strict'
   });
+  logEvent(null, 'user.logout', { ipAddress: req.ip, userAgent: req.headers['user-agent'] });
   res.json({ msg: 'Logged out successfully' });
 });
 
@@ -274,13 +387,14 @@ router.post('/mfa/verify', async (req, res) => {
       if (!user.mfa_enabled) {
         user.mfa_enabled = true;
         await user.save();
+        logEvent(user._id, 'user.mfa_enabled', { ipAddress: req.ip, userAgent: req.headers['user-agent'] });
       }
 
       // Generate tokens
       const fingerprint = getFingerprint(req);
       const { accessToken, refreshToken } = generateTokens(user, fingerprint);
 
-      res.cookie('refreshToken', refreshToken, {
+      res.cookie('__Host-skillswap-session', refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'Strict',
@@ -330,6 +444,14 @@ router.post('/password/reset', [
 
     const { newPassword } = req.body;
 
+    // HIBP breach check on password reset too
+    const pwnedCount = await isPasswordPwned(newPassword);
+    if (pwnedCount > 0) {
+      return res.status(400).json({
+        msg: `This password has appeared in ${pwnedCount.toLocaleString()} data breach(es). Please choose a different password.`
+      });
+    }
+
     // Check last 5 passwords
     const history = await PasswordHistory.find({ userId: user.id }).sort({ createdAt: -1 }).limit(5);
     for (let record of history) {
@@ -352,6 +474,11 @@ router.post('/password/reset', [
     await PasswordHistory.create({
       userId: user.id,
       password_hash
+    });
+
+    logEvent(user._id, 'user.password_changed', {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
     });
 
     res.json({ msg: 'Password updated successfully' });

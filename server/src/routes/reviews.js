@@ -1,13 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const xss = require('xss-clean');
 const authMiddleware = require('../middleware/auth');
 const Review = require('../models/Review');
 const Booking = require('../models/Booking');
 
 const router = express.Router();
 
-router.use(xss());
 router.use(authMiddleware);
 
 // @route   POST /api/reviews

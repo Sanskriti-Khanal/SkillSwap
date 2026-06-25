@@ -1,1 +1,3 @@
 node_modules
+# Log files — never commit
+logs/

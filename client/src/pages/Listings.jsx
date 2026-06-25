@@ -2,68 +2,87 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../utils/api';
 
+const CATEGORIES = ['Programming', 'Design', 'Business', 'Music', 'Language', 'Mathematics', 'Science', 'Other'];
+
 export default function Listings() {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [search, setSearch] = useState('');
 
   const fetchListings = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const res = await api.get(`/listings${category ? `?skill_category=${category}` : ''}`);
-      setListings(res.data.listings);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+      const params = new URLSearchParams();
+      if (category) params.set('skill_category', category);
+      if (search)   params.set('keyword', search);
+      const res = await api.get(`/listings?${params}`);
+      setListings(res.data.listings ?? []);
+    } catch (_) {
+      setListings([]);
+    } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchListings();
-  }, [category]);
+  useEffect(() => { fetchListings(); }, [category, search]);
+
+  const handleSearch = (e) => { e.preventDefault(); setSearch(keyword); };
 
   return (
-    <div className="page-container animate-fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+    <div className="page fade-up">
+      <div className="page-header">
         <div>
-          <h2>Marketplace</h2>
-          <p className="subtitle" style={{ textAlign: 'left', marginBottom: 0, marginTop: '0.25rem' }}>Find the perfect mentor to upskill.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <select 
-            value={category} 
-            onChange={(e) => setCategory(e.target.value)}
-            style={{ padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', outline: 'none' }}
-          >
-            <option value="">All Categories</option>
-            <option value="Programming">Programming</option>
-            <option value="Design">Design</option>
-            <option value="Business">Business</option>
-          </select>
+          <h1>Browse Skills</h1>
+          <p style={{ marginTop: 4 }}>Find expert tutors for any subject</p>
         </div>
       </div>
 
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 32, alignItems: 'center' }}>
+        <form onSubmit={handleSearch} className="search-wrap" style={{ flex: '1 1 260px' }}>
+          <span className="search-icon">🔍</span>
+          <input
+            type="text"
+            placeholder="Search by title…"
+            value={keyword}
+            onChange={e => setKeyword(e.target.value)}
+          />
+        </form>
+        <select value={category} onChange={e => setCategory(e.target.value)} style={{ flex: '0 0 auto', maxWidth: 200 }}>
+          <option value="">All categories</option>
+          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {(category || search) && (
+          <button className="btn btn-ghost btn-sm" onClick={() => { setCategory(''); setKeyword(''); setSearch(''); }}>
+            Clear filters
+          </button>
+        )}
+      </div>
+
       {loading ? (
-        <p>Loading listings...</p>
+        <div className="empty"><div className="empty-icon">⏳</div><h3>Loading…</h3></div>
       ) : listings.length === 0 ? (
-        <p>No listings found.</p>
+        <div className="empty">
+          <div className="empty-icon">📭</div>
+          <h3>No listings found</h3>
+          <p>Try a different search or category</p>
+        </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
-          {listings.map(listing => (
-            <Link to={`/listings/${listing._id}`} key={listing._id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', cursor: 'pointer', textDecoration: 'none', color: 'inherit' }}>
-              <div style={{ aspectRatio: '16/9', backgroundColor: 'var(--surface-color)', borderRadius: '4px', overflow: 'hidden' }}>
-                {listing.tutor_id?.profile_photo_url && (
-                  <img src={listing.tutor_id.profile_photo_url} alt="Tutor" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                )}
-              </div>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{listing.skill_category}</span>
-                  <span style={{ fontWeight: 600 }}>NPR {listing.price_per_session}</span>
+        <div className="listing-grid">
+          {listings.map(l => (
+            <Link to={`/listings/${l._id}`} key={l._id} className="listing-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <div className="listing-category">{l.skill_category}</div>
+              <div className="listing-title">{l.title}</div>
+              <div className="listing-desc">{l.description}</div>
+              {l.tutor_id && (
+                <div className="tutor-row">
+                  <div className="tutor-avatar">{l.tutor_id.email?.[0]?.toUpperCase() ?? 'T'}</div>
+                  <span style={{ fontSize: '.8125rem', color: 'var(--body)' }}>{l.tutor_id.email}</span>
                 </div>
-                <h3 style={{ fontSize: '1.125rem', marginBottom: '0.25rem' }}>{listing.title}</h3>
-                <p style={{ fontSize: '0.875rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{listing.description}</p>
+              )}
+              <div className="listing-footer">
+                <span className="listing-price">NPR {l.price_per_session?.toLocaleString()}</span>
+                <span className="listing-duration">{l.duration_minutes} min</span>
               </div>
             </Link>
           ))}

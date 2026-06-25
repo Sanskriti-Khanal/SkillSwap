@@ -1,142 +1,100 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import HCaptcha from '@hcaptcha/react-hcaptcha';
-import api, { getErrorMessage } from '../utils/api';
+import { authApi, getErrorMessage } from '../utils/api';
+
+const STRENGTH_COLORS = ['#DC2626', '#F97316', '#EAB308', '#84CC16', '#61B44E'];
+const STRENGTH_LABELS = ['Very weak', 'Weak', 'Fair', 'Strong', 'Very strong'];
 
 export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [captchaToken, setCaptchaToken] = useState('');
   const [alert, setAlert] = useState(null);
-  
-  // Password strength state
-  const [strengthScore, setStrengthScore] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [strengthScore, setStrengthScore] = useState(-1);
   const [strengthFeedback, setStrengthFeedback] = useState('');
-  
   const captchaRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!password) {
-      setStrengthScore(-1);
-      setStrengthFeedback('');
-      return;
-    }
-    const timer = setTimeout(async () => {
+    if (!password) { setStrengthScore(-1); setStrengthFeedback(''); return; }
+    const t = setTimeout(async () => {
       try {
-        const res = await api.post('/password-strength', { password });
+        const res = await authApi.post('/password-strength', { password });
         setStrengthScore(res.data.score);
-        let feedback = res.data.feedback?.warning || '';
-        setStrengthFeedback(feedback);
-      } catch (err) {
-        console.error('Failed to get strength', err);
-      }
+        setStrengthFeedback(res.data.feedback?.warning || '');
+      } catch (_) {}
     }, 300);
-    return () => clearTimeout(timer);
+    return () => clearTimeout(t);
   }, [password]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!captchaToken) {
-      setAlert({ type: 'alert-error', msg: 'Please complete the CAPTCHA' });
-      return;
-    }
-
+    if (!captchaToken) { setAlert({ type: 'alert-error', msg: 'Please complete the CAPTCHA' }); return; }
+    setLoading(true);
     try {
-      await api.post('/register', { email, password, 'h-captcha-response': captchaToken });
-      setAlert({ type: 'alert-success', msg: 'Registration successful! Redirecting...' });
-      setTimeout(() => navigate('/login'), 2000);
+      await authApi.post('/register', { email, password, 'h-captcha-response': captchaToken });
+      setAlert({ type: 'alert-success', msg: 'Account created! Redirecting to login…' });
+      setTimeout(() => navigate('/login'), 1800);
     } catch (err) {
       setAlert({ type: 'alert-error', msg: getErrorMessage(err) });
-      if (captchaRef.current) captchaRef.current.resetCaptcha();
+      captchaRef.current?.resetCaptcha();
       setCaptchaToken('');
-    }
+    } finally { setLoading(false); }
   };
 
-  const getStrengthColor = () => {
-    const colors = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#10B981'];
-    return colors[strengthScore] || 'transparent';
-  };
-
-  const getStrengthText = () => {
-    if (strengthScore === -1) return '';
-    const textLabels = ['Very Weak', 'Weak', 'Fair', 'Strong', 'Very Strong'];
-    let text = textLabels[strengthScore];
-    if (strengthFeedback) text += ` - ${strengthFeedback}`;
-    return text;
-  };
+  const barWidth = strengthScore < 0 ? '0%' : `${(strengthScore + 1) * 20}%`;
+  const barColor = STRENGTH_COLORS[strengthScore] ?? 'transparent';
 
   return (
-    <div style={{ display: 'flex', minHeight: 'calc(100vh - 65px)' }}>
-      {/* Left Form Side */}
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
-        <div style={{ width: '100%', maxWidth: '380px' }} className="animate-fade-in">
-          <h1 style={{ marginBottom: '0.5rem', fontSize: '2rem' }}>Create Account</h1>
-          <p className="subtitle" style={{ marginBottom: '2rem' }}>Join SkillSwap to start sharing skills.</p>
-          
-          {alert && (
-            <div className={`alert ${alert.type}`}>
-              {alert.msg}
-            </div>
-          )}
+    <div className="auth-page fade-up">
+      <div className="auth-card">
+        <Link to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', textDecoration: 'none', marginBottom: 24 }}>
+          <img src="/images/image copy 2.png" alt="SkillSwap" style={{ height: 48, width: 'auto' }} />
+          <span style={{ color: '#1A1512', fontSize: '1.5rem', fontWeight: 600, letterSpacing: '-0.02em' }}>SkillSwap</span>
+        </Link>
 
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="email">Email address</label>
-              <input 
-                type="email" id="email" 
-                value={email} onChange={(e) => setEmail(e.target.value)}
-                required placeholder="you@example.com" 
-              />
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <input 
-                type="password" id="password" 
-                value={password} onChange={(e) => setPassword(e.target.value)}
-                required placeholder="Minimum 12 characters" 
-              />
-              <div style={{ height: '4px', background: 'var(--border-color)', borderRadius: '2px', marginTop: '0.5rem', overflow: 'hidden' }}>
-                <div style={{ 
-                    height: '100%', 
-                    width: strengthScore === -1 ? '0%' : `${(strengthScore + 1) * 20}%`,
-                    backgroundColor: getStrengthColor(),
-                    transition: 'all var(--transition-medium)'
-                  }}></div>
-              </div>
-              <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', color: getStrengthColor() }}>
-                {getStrengthText()}
-              </div>
-            </div>
+        <h2 style={{ marginBottom: 4 }}>Create your account</h2>
+        <p style={{ fontSize: '.875rem', marginBottom: 28 }}>Join thousands of tutors and learners.</p>
 
-            <div className="form-group" style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem' }}>
-              <HCaptcha
-                sitekey="10000000-ffff-ffff-ffff-000000000001"
-                onVerify={setCaptchaToken}
-                ref={captchaRef}
-              />
-            </div>
+        {alert && <div className={`alert ${alert.type}`}>{alert.msg}</div>}
 
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Create Account</button>
-            
-            <div className="text-center mt-4">
-              <Link to="/login" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                Already have an account? <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Log in</span>
-              </Link>
-            </div>
-          </form>
-        </div>
-      </div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="email">Email address</label>
+            <input type="email" id="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@example.com" />
+          </div>
 
-      {/* Right Visual Side */}
-      <div style={{ flex: 1, backgroundColor: 'var(--surface-color)', display: 'none', '@media (min-width: 768px)': { display: 'flex' }, borderLeft: '1px solid var(--border-color)', alignItems: 'center', justifyContent: 'center', padding: '4rem' }}>
-        {/* Minimalist Abstract Graphic */}
-        <div style={{ width: '100%', maxWidth: '400px', aspectRatio: '1', position: 'relative' }}>
-          <div style={{ position: 'absolute', top: '10%', left: '10%', width: '60%', height: '60%', border: '1px solid var(--border-color)', borderRadius: '50%' }}></div>
-          <div style={{ position: 'absolute', bottom: '10%', right: '10%', width: '40%', height: '40%', backgroundColor: 'var(--accent-color)', borderRadius: '8px' }}></div>
-          <div style={{ position: 'absolute', top: '40%', left: '30%', width: '30%', height: '30%', border: '1px dashed var(--text-secondary)' }}></div>
-        </div>
+          <div className="form-group">
+            <label htmlFor="password">Password</label>
+            <input type="password" id="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="At least 12 characters" />
+            {password && (
+              <>
+                <div className="strength-bar">
+                  <div className="strength-fill" style={{ width: barWidth, background: barColor }} />
+                </div>
+                <p style={{ fontSize: '.75rem', marginTop: 4, color: barColor, fontWeight: 500 }}>
+                  {STRENGTH_LABELS[strengthScore] ?? ''}
+                  {strengthFeedback && ` — ${strengthFeedback}`}
+                </p>
+              </>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>
+            <HCaptcha sitekey="10000000-ffff-ffff-ffff-000000000001" onVerify={setCaptchaToken} ref={captchaRef} />
+          </div>
+
+          <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={loading}>
+            {loading ? 'Creating account…' : 'Create account'}
+          </button>
+
+          <p style={{ textAlign: 'center', marginTop: 20, fontSize: '.875rem', color: 'var(--body)' }}>
+            Already have an account?{' '}
+            <Link to="/login" style={{ color: 'var(--orange)', fontWeight: 600 }}>Log in</Link>
+          </p>
+        </form>
       </div>
     </div>
   );
