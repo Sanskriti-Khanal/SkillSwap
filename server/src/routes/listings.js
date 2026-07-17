@@ -71,6 +71,16 @@ router.get('/', async (req, res) => {
       // SECURITY: cast to string — prevents NoSQL object injection via { $ne: null }
       query.skill_category = String(req.query.skill_category);
     }
+    if (req.query.tutor_id) {
+      // SECURITY: validate as a real ObjectId string before use — an invalid/crafted
+      // value would otherwise throw a Mongoose CastError (500) or, worse, if not cast
+      // to String first, could be an injection vector like skill_category above.
+      const tutorId = String(req.query.tutor_id);
+      if (!/^[0-9a-fA-F]{24}$/.test(tutorId)) {
+        return res.json({ listings: [], currentPage: 1, totalPages: 0, totalListings: 0 });
+      }
+      query.tutor_id = tutorId;
+    }
 
     // VULNERABLE code (do NOT use):
     // query.title = req.query.keyword  ← attacker sends keyword[%24ne]=x → { title: { $ne: 'x' } } → returns all docs

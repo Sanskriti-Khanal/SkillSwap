@@ -7,11 +7,66 @@ const User = require('../models/User');
 const Booking = require('../models/Booking');
 const PasswordHistory = require('../models/PasswordHistory');
 const RevokedToken = require('../models/RevokedToken');
+const TutorApplication = require('../models/TutorApplication');
+const TutorEducation = require('../models/TutorEducation');
+const TutorExperience = require('../models/TutorExperience');
+const TutorSkills = require('../models/TutorSkills');
 const { logEvent } = require('../services/logger');
 
 const router = express.Router();
 
-// Apply auth middleware to all user routes
+// @route   GET /api/users/:id/public-profile
+// @desc    Public tutor profile — safe subset of the user's own fields plus their most
+//          recent APPROVED tutor application data (headline, bio, skills, education,
+//          portfolio links). Registered before the authMiddleware blanket below so
+//          anyone browsing (including logged-out visitors) can view it.
+// @access  Public
+// SECURITY: never includes TutorVerification (government ID) or any admin-only field —
+// only a hand-picked public-safe projection is ever returned.
+router.get('/:id/public-profile', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('email role profile_photo_url bio createdAt');
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+
+    const application = await TutorApplication.findOne({ user_id: user._id, status: 'approved' });
+
+    let education = null;
+    let experience = null;
+    let skills = null;
+    if (application) {
+      [education, experience, skills] = await Promise.all([
+        application.education_id ? TutorEducation.findById(application.education_id).select('highest_education institution_name field_of_study') : null,
+        application.experience_id ? TutorExperience.findById(application.experience_id).select('portfolio_links current_title current_company years_of_professional_experience') : null,
+        application.skills_id ? TutorSkills.findById(application.skills_id) : null,
+      ]);
+    }
+
+    res.json({
+      user: {
+        _id: user._id,
+        email: user.email,
+        role: user.role,
+        profile_photo_url: user.profile_photo_url,
+        bio: user.bio,
+        member_since: user.createdAt,
+      },
+      profile: application ? {
+        display_name: application.personal_info?.display_name,
+        professional_headline: application.professional_headline,
+        bio: application.bio,
+        education,
+        experience,
+        skills,
+      } : null,
+    });
+  } catch (err) {
+    console.error(err.message);
+    if (err.kind === 'ObjectId') return res.status(404).json({ msg: 'User not found' });
+    res.status(500).send('Server Error');
+  }
+});
+
+// Apply auth middleware to all routes below this point.
 router.use(authMiddleware);
 
 // Rate limiter for data export: 1 request per hour per user

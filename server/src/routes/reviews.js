@@ -6,12 +6,16 @@ const Booking = require('../models/Booking');
 
 const router = express.Router();
 
-router.use(authMiddleware);
+// NOTE: no blanket `router.use(authMiddleware)` in this file — some routes are
+// genuinely public (tutor/listing review listings for browsing) and some are
+// private (submitting a review, fetching your own reviews). Auth is applied
+// per-route below instead, and note that '/tutor/me' MUST be registered before
+// '/tutor/:tutorId' or the dynamic route would shadow it.
 
 // @route   POST /api/reviews
 // @desc    Submit a review for a booking
 // @access  Private
-router.post('/', [
+router.post('/', authMiddleware, [
   body('booking_id', 'Booking ID is required').not().isEmpty(),
   body('rating', 'Rating must be between 1 and 5').isInt({ min: 1, max: 5 }),
   body('comment', 'Comment is required').not().isEmpty()
@@ -69,7 +73,9 @@ router.post('/', [
 // @route   GET /api/reviews/tutor/me
 // @desc    Get all reviews received by the authenticated tutor
 // @access  Private
-router.get('/tutor/me', async (req, res) => {
+// Must be registered before GET /tutor/:tutorId below, or the dynamic route would
+// shadow this one (Express matches routes in registration order).
+router.get('/tutor/me', authMiddleware, async (req, res) => {
   try {
     const reviews = await Review.find({ tutor_id: req.user.id })
       .populate('learner_id', 'email profile_photo_url')
@@ -79,6 +85,24 @@ router.get('/tutor/me', async (req, res) => {
     res.json(reviews);
   } catch (err) {
     console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   GET /api/reviews/tutor/:tutorId
+// @desc    Get all reviews received by a specific tutor (public profile page).
+// @access  Public
+router.get('/tutor/:tutorId', async (req, res) => {
+  try {
+    const reviews = await Review.find({ tutor_id: req.params.tutorId })
+      .populate('learner_id', 'email profile_photo_url')
+      .populate('listing_id', 'title')
+      .sort({ createdAt: -1 });
+
+    res.json(reviews);
+  } catch (err) {
+    console.error(err.message);
+    if (err.kind === 'ObjectId') return res.status(404).json({ msg: 'Tutor not found' });
     res.status(500).send('Server Error');
   }
 });

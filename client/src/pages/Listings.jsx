@@ -71,21 +71,23 @@ export default function Listings() {
       ) : (
         <div className="listing-grid">
           {listings.map(l => (
-            <Link to={`/listings/${l._id}`} key={l._id} className="listing-card" style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div className="listing-category">{l.skill_category}</div>
-              <div className="listing-title">{l.title}</div>
-              <div className="listing-desc">{l.description}</div>
+            <div key={l._id} className="listing-card">
+              <Link to={`/listings/${l._id}`} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+                <div className="listing-category">{l.skill_category}</div>
+                <div className="listing-title">{l.title}</div>
+                <div className="listing-desc">{l.description}</div>
+              </Link>
               {l.tutor_id && (
-                <div className="tutor-row">
+                <Link to={`/tutors/${l.tutor_id._id}`} className="tutor-row" style={{ textDecoration: 'none' }}>
                   <div className="tutor-avatar">{l.tutor_id.email?.[0]?.toUpperCase() ?? 'T'}</div>
                   <span style={{ fontSize: '.8125rem', color: 'var(--body)' }}>{l.tutor_id.email}</span>
-                </div>
+                </Link>
               )}
-              <div className="listing-footer">
+              <Link to={`/listings/${l._id}`} className="listing-footer" style={{ textDecoration: 'none' }}>
                 <span className="listing-price">NPR {l.price_per_session?.toLocaleString()}</span>
                 <span className="listing-duration">{l.duration_minutes} min</span>
-              </div>
-            </Link>
+              </Link>
+            </div>
           ))}
         </div>
       )}

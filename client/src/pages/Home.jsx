@@ -62,7 +62,7 @@ export default function Home() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F7F4F1', fontFamily: "'Figtree', 'Dosis', sans-serif", overflowX: 'hidden' }}>
+    <div style={{ minHeight: '100vh', background: '#F7F4F1', fontFamily: "'Inter', sans-serif", overflowX: 'hidden' }}>
 
       {/* ── Keyframes injected once ── */}
       <style>{`

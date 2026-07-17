@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import api from '../utils/api';
 
@@ -48,15 +48,19 @@ export default function ListingDetail() {
           <h1 style={{ marginBottom: 16 }}>{listing.title}</h1>
 
           {tutor && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28, padding: '16px 20px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+            <Link
+              to={`/tutors/${tutor._id}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28, padding: '16px 20px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', textDecoration: 'none' }}
+            >
               <div className="tutor-avatar" style={{ width: 44, height: 44, fontSize: '.875rem' }}>
                 {tutor.email?.[0]?.toUpperCase() ?? 'T'}
               </div>
               <div>
                 <strong style={{ fontSize: '.9375rem', color: 'var(--dark)' }}>{tutor.email}</strong>
                 {tutor.bio && <p style={{ fontSize: '.8125rem', marginTop: 2 }}>{tutor.bio}</p>}
+                <span style={{ fontSize: '.75rem', color: 'var(--orange)', fontWeight: 600 }}>View profile →</span>
               </div>
-            </div>
+            </Link>
           )}
 
           <div className="divider" />
