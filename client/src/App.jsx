@@ -16,6 +16,7 @@ import TutorDashboardLayout from './pages/tutor-dashboard/TutorDashboardLayout';
 import TutorDashboardOverview from './pages/tutor-dashboard/TutorDashboardOverview';
 import TutorAvailabilitySettings from './pages/tutor-dashboard/TutorAvailabilitySettings';
 import TutorReviews from './pages/tutor-dashboard/TutorReviews';
+import TutorListings from './pages/tutor-dashboard/TutorListings';
 import ComingSoon from './components/ComingSoon';
 import Profile from './pages/Profile';
 import Listings from './pages/Listings';
@@ -45,6 +46,7 @@ function App() {
             <Route path="tutor/application/status" element={<ApplicationStatus />} />
             <Route path="tutor/dashboard" element={<TutorDashboardLayout />}>
               <Route index element={<TutorDashboardOverview />} />
+              <Route path="listings" element={<TutorListings />} />
               <Route path="courses" element={<ComingSoon feature="Courses" />} />
               <Route path="bookings" element={<Bookings />} />
               <Route path="availability" element={<TutorAvailabilitySettings />} />

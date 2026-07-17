@@ -1,11 +1,12 @@
 import { Outlet, Link, useLocation, useOutletContext, Navigate } from 'react-router-dom';
 import {
-  LayoutDashboard, BookOpen, CalendarDays, CalendarClock, Wallet,
+  LayoutDashboard, BookOpen, ClipboardList, CalendarDays, CalendarClock, Wallet,
   ArrowDownToLine, MessageSquare, Star, BarChart3, Settings, Lock,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { path: '', label: 'Dashboard', end: true, icon: LayoutDashboard },
+  { path: 'listings', label: 'My Listings', icon: ClipboardList },
   { path: 'courses', label: 'Courses', soon: true, icon: BookOpen },
   { path: 'bookings', label: 'Bookings', icon: CalendarDays },
   { path: 'availability', label: 'Calendar & Availability', icon: CalendarClock },

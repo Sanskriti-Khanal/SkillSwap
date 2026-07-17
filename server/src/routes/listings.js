@@ -43,6 +43,20 @@ router.post('/', [
   }
 });
 
+// @route   GET /api/listings/mine
+// @desc    Get the authenticated tutor's own listings (any status, no pagination limit).
+// @access  Private (tutor only)
+// NOTE: must be registered before GET /:id, or Express would try to parse "mine" as an ObjectId.
+router.get('/mine', [authMiddleware, requireRole('tutor', 'both')], async (req, res) => {
+  try {
+    const listings = await Listing.find({ tutor_id: req.user.id }).sort({ createdAt: -1 });
+    res.json(listings);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
 // @route   GET /api/listings
 // @desc    Get paginated listings
 // @access  Public
