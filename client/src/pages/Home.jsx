@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { Star } from 'lucide-react';
 
 const ROTATING = ['Programming', 'Mathematics', 'Design', 'Music', 'Business', 'Science'];
 const TRENDING = ['Programming', 'Design', 'Mathematics', 'English', 'Music', 'Business'];
@@ -45,19 +46,19 @@ export default function Home() {
   };
 
   const row1 = [
-    { title: "The Best of the Best!", text: "Every lesson has been fresh and exciting, setting me up for significant progress every time. Finally, and most importantly, Rashida has helped me to love MY voice.", author: "Danielle", lessons: 19, tutor: "Rashida", subject: "Voice Tutor", color: "#F47B20", bg: "#FFF9F5", avatar: "https://i.pravatar.cc/150?img=43" },
-    { title: "A+ Tutor - Knowledgable and patient", text: "Charles has been a terrific tutor for my 17-year-old daughter in AP Chemistry. He reviews the material in a manner that is easy to understand and fosters a positive learning environment.", author: "Annette", lessons: 104, tutor: "Charles", subject: "Chemistry Tutor", color: "#7CB342", bg: "#F6FAF2", avatar: "https://i.pravatar.cc/150?img=11" },
-    { title: "Great tutor", text: "My son is a high school sophomore. He was struggling with Geometry. Danny has been a great geometry tutor for my son. He went from a D to B in one quarter. Very happy with Danny.", author: "Debra", lessons: 8, tutor: "Danny", subject: "Geometry Tutor", color: "#B9D532", bg: "#FDFEF5", avatar: "https://i.pravatar.cc/150?img=12" },
-    { title: "Amazing progress!", text: "In just a few weeks, my daughter's confidence in Math skyrocketed. James breaks down complex problems into easy steps. Absolutely fantastic experience.", author: "Sarah", lessons: 12, tutor: "James", subject: "Math Tutor", color: "#1E88E5", bg: "#F3F8FD", avatar: "https://i.pravatar.cc/150?img=22" },
-    { title: "Highly recommended", text: "I never thought I could learn to code, but Eric broke everything down perfectly. His patience and structured lessons made all the difference. I built my first app!", author: "Emily", lessons: 34, tutor: "Eric", subject: "Coding Tutor", color: "#F47B20", bg: "#FFF9F5", avatar: "https://i.pravatar.cc/150?img=5" },
+    { title: "The Best of the Best!", text: "Every lesson has been fresh and exciting, setting me up for significant progress every time. Finally, and most importantly, Rashida has helped me to love MY voice.", author: "Danielle", lessons: 19, tutor: "Rashida", subject: "Voice Tutor", color: "#F47B20", bg: "#FCE1E4", avatar: "https://i.pravatar.cc/150?img=43" },
+    { title: "A+ Tutor - Knowledgable and patient", text: "Charles has been a terrific tutor for my 17-year-old daughter in AP Chemistry. He reviews the material in a manner that is easy to understand and fosters a positive learning environment.", author: "Annette", lessons: 104, tutor: "Charles", subject: "Chemistry Tutor", color: "#7CB342", bg: "#E8DFF5", avatar: "https://i.pravatar.cc/150?img=11" },
+    { title: "Great tutor", text: "My son is a high school sophomore. He was struggling with Geometry. Danny has been a great geometry tutor for my son. He went from a D to B in one quarter. Very happy with Danny.", author: "Debra", lessons: 8, tutor: "Danny", subject: "Geometry Tutor", color: "#B9D532", bg: "#E2F0CB", avatar: "https://i.pravatar.cc/150?img=12" },
+    { title: "Amazing progress!", text: "In just a few weeks, my daughter's confidence in Math skyrocketed. James breaks down complex problems into easy steps. Absolutely fantastic experience.", author: "Sarah", lessons: 12, tutor: "James", subject: "Math Tutor", color: "#1E88E5", bg: "#FFF6CC", avatar: "https://i.pravatar.cc/150?img=22" },
+    { title: "Highly recommended", text: "I never thought I could learn to code, but Eric broke everything down perfectly. His patience and structured lessons made all the difference. I built my first app!", author: "Emily", lessons: 34, tutor: "Eric", subject: "Coding Tutor", color: "#F47B20", bg: "#D4E6F1", avatar: "https://i.pravatar.cc/150?img=5" },
   ];
 
   const row2 = [
-    { title: "Wonderful tutor", text: "Mikayla is an amazing tutor! She is extremely knowledgeable and so patient to boot! Now I'm looking forward to her working with my daughter after she laid the groundwork.", author: "Sunny", lessons: 10, tutor: "Mikayla", subject: "Writing Tutor", color: "#1E88E5", bg: "#F3F8FD", avatar: "https://i.pravatar.cc/150?img=32" },
-    { title: "Fun and engaging", text: "My kids actually look forward to their French lessons now. Marie uses games and interactive stories. The interactivity is amazing and their pronunciation is improving fast.", author: "Lisa", lessons: 22, tutor: "Marie", subject: "French Tutor", color: "#B9D532", bg: "#FDFEF5", avatar: "https://i.pravatar.cc/150?img=9" },
-    { title: "Patient and clear", text: "Physics used to be a nightmare, but Michael explains it with such clarity. I actually look forward to our sessions. My grades have gone from a C to an A+!", author: "John", lessons: 15, tutor: "Michael", subject: "Physics Tutor", color: "#1E88E5", bg: "#F3F8FD", avatar: "https://i.pravatar.cc/150?img=60" },
-    { title: "A true artist", text: "Chloe helped me master watercolors in just a month. She is incredibly talented, observant, and gives the most constructive feedback. Highly recommended!", author: "Mia", lessons: 6, tutor: "Chloe", subject: "Art Tutor", color: "#F47B20", bg: "#FFF9F5", avatar: "https://i.pravatar.cc/150?img=47" },
-    { title: "Perfect for beginners", text: "I started guitar from scratch. Alex is so encouraging and makes sure my technique is right. Now I can play my favorite songs confidently! Best tutor ever.", author: "David", lessons: 45, tutor: "Alex", subject: "Guitar Tutor", color: "#7CB342", bg: "#F6FAF2", avatar: "https://i.pravatar.cc/150?img=68" },
+    { title: "Wonderful tutor", text: "Mikayla is an amazing tutor! She is extremely knowledgeable and so patient to boot! Now I'm looking forward to her working with my daughter after she laid the groundwork.", author: "Sunny", lessons: 10, tutor: "Mikayla", subject: "Writing Tutor", color: "#1E88E5", bg: "#E8DFF5", avatar: "https://i.pravatar.cc/150?img=32" },
+    { title: "Fun and engaging", text: "My kids actually look forward to their French lessons now. Marie uses games and interactive stories. The interactivity is amazing and their pronunciation is improving fast.", author: "Lisa", lessons: 22, tutor: "Marie", subject: "French Tutor", color: "#B9D532", bg: "#FCE1E4", avatar: "https://i.pravatar.cc/150?img=9" },
+    { title: "Patient and clear", text: "Physics used to be a nightmare, but Michael explains it with such clarity. I actually look forward to our sessions. My grades have gone from a C to an A+!", author: "John", lessons: 15, tutor: "Michael", subject: "Physics Tutor", color: "#1E88E5", bg: "#D4E6F1", avatar: "https://i.pravatar.cc/150?img=60" },
+    { title: "A true artist", text: "Chloe helped me master watercolors in just a month. She is incredibly talented, observant, and gives the most constructive feedback. Highly recommended!", author: "Mia", lessons: 6, tutor: "Chloe", subject: "Art Tutor", color: "#F47B20", bg: "#E2F0CB", avatar: "https://i.pravatar.cc/150?img=47" },
+    { title: "Perfect for beginners", text: "I started guitar from scratch. Alex is so encouraging and makes sure my technique is right. Now I can play my favorite songs confidently! Best tutor ever.", author: "David", lessons: 45, tutor: "Alex", subject: "Guitar Tutor", color: "#7CB342", bg: "#FFF6CC", avatar: "https://i.pravatar.cc/150?img=68" },
   ];
 
   return (
@@ -198,10 +199,13 @@ export default function Home() {
             {[
               { val: '200+', label: 'Expert tutors', color: '#F47B20' },
               { val: '500+', label: 'Sessions completed', color: '#61B44E' },
-              { val: '4.9★', label: 'Average rating', color: '#B9D532' },
+              { val: '4.9', label: 'Average rating', color: '#B9D532', icon: true },
             ].map(s => (
-              <div key={s.val} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.val}</div>
+              <div key={s.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: s.color, lineHeight: 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {s.val}
+                  {s.icon && <Star width={20} height={20} strokeWidth={2} color={s.color} fill={s.color} aria-hidden="true" />}
+                </div>
                 <div style={{ fontSize: '.85rem', color: '#8A7E7A', marginTop: 4 }}>{s.label}</div>
               </div>
             ))}
@@ -299,7 +303,7 @@ export default function Home() {
         <div className="marquee-wrapper" style={{ marginBottom: 24 }}>
           <div className="marquee-content-left">
             {[...row1, ...row1].map((t, i) => (
-              <div key={i} className="marquee-card" style={{ background: t.bg, borderRadius: 16, padding: 32, boxShadow: '0 4px 20px rgba(0,0,0,.04)' }}>
+              <div key={i} className="marquee-card" style={{ background: t.bg, borderRadius: 16, padding: 32, border: '6px solid #FFFFFF', boxShadow: '0 4px 20px rgba(0,0,0,.04)' }}>
                 <h4 style={{ color: t.color, fontSize: '1.05rem', fontWeight: 800, marginBottom: 16 }}>
                   <span style={{ fontSize: '1.2rem', marginRight: 4 }}>“</span>{t.title}
                 </h4>
@@ -317,7 +321,7 @@ export default function Home() {
         <div className="marquee-wrapper">
           <div className="marquee-content-right">
             {[...row2, ...row2].map((t, i) => (
-              <div key={i} className="marquee-card" style={{ background: t.bg, borderRadius: 16, padding: 32, boxShadow: '0 4px 20px rgba(0,0,0,.04)' }}>
+              <div key={i} className="marquee-card" style={{ background: t.bg, borderRadius: 16, padding: 32, border: '6px solid #FFFFFF', boxShadow: '0 4px 20px rgba(0,0,0,.04)' }}>
                 <h4 style={{ color: t.color, fontSize: '1.05rem', fontWeight: 800, marginBottom: 16 }}>
                   <span style={{ fontSize: '1.2rem', marginRight: 4 }}>“</span>{t.title}
                 </h4>

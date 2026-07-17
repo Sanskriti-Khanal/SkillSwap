@@ -134,7 +134,7 @@ router.patch('/:id/confirm', async (req, res) => {
     // VULNERABLE code (do NOT use):
     //   if (req.body.paid) { booking.status = 'confirmed'; }   ← client controls this
     if (booking.payment_status !== 'paid') {
-      return res.status(402).json({ msg: 'Payment required: complete Stripe checkout before confirming' });
+      return res.status(402).json({ msg: 'Payment required: complete Khalti checkout before confirming' });
     }
 
     booking.status = 'confirmed';

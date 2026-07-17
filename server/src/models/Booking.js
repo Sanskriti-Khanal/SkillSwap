@@ -30,12 +30,8 @@ const bookingSchema = new mongoose.Schema({
     enum: ['unpaid', 'paid', 'payment_failed', 'refunded'],
     default: 'unpaid',
   },
-  // Incremented on each payment attempt — used to build idempotency keys for Stripe
-  attempt_number: {
-    type: Number,
-    default: 0,
-  },
-  stripe_session_id: {
+  // Khalti KPG v2 payment identifier, set once /payments/initiate succeeds
+  khalti_pidx: {
     type: String,
     default: null,
   },
@@ -46,6 +42,14 @@ const bookingSchema = new mongoose.Schema({
 bookingSchema.index(
   { listing_id: 1, requested_time: 1 },
   { unique: true, partialFilterExpression: { status: { $nin: ['cancelled', 'refunded'] } } }
+);
+
+// SECURITY: a Khalti pidx can never be attached to more than one booking — enforced
+// atomically at the database layer, not just in application logic. Sparse/partial so
+// bookings that haven't started a payment yet (khalti_pidx: null) don't collide.
+bookingSchema.index(
+  { khalti_pidx: 1 },
+  { unique: true, partialFilterExpression: { khalti_pidx: { $type: 'string' } } }
 );
 
 module.exports = mongoose.model('Booking', bookingSchema);

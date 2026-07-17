@@ -28,7 +28,7 @@ app.use(securityMiddleware.helmetConfig);
 
 // CORS configuration (restrict to localhost:3000 in dev)
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' ? 'https://skillswap.example.com' : (process.env.CLIENT_URL || 'http://localhost:5173'),
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
   credentials: true, // required for withCredentials (cookies + Authorization header)
   optionsSuccessStatus: 200
 };
@@ -36,9 +36,6 @@ app.use(cors(corsOptions));
 
 // IP Blocking Middleware
 app.use(ipBlock);
-
-// Stripe webhook must receive the raw body for signature verification — mount BEFORE express.json()
-app.use('/api/payments/webhook', express.raw({ type: 'application/json' }), require('./routes/payments'));
 
 // Parse JSON bodies and cookies (all other routes)
 // SECURITY: 10 kb body size limit — prevents large-payload DoS attacks.
@@ -87,11 +84,24 @@ app.use('/api/bookings', csrfProtection, require('./routes/bookings'));
 // Review Routes
 app.use('/api/reviews', csrfProtection, require('./routes/reviews'));
 
+// Admin Tutor Application Review Routes — mounted before the general /api/admin
+// router below so requests don't fall through its blanket auth check first.
+// CSRF applied (deviates from the plain /api/admin mount) because these actions
+// flip real user roles.
+app.use('/api/admin/tutor-applications', csrfProtection, require('./routes/adminTutorApplications'));
+
 // Admin Routes
 app.use('/api/admin', require('./routes/admin'));
 
-// Payment Routes (non-webhook — webhook already mounted above with raw body parser)
-app.use('/api/payments', require('./routes/payments'));
+// Payment Routes — CSRF protection applied as defence-in-depth (no webhook: KPG v2
+// has no server-to-server completion callback, so there's no unauthenticated route left)
+app.use('/api/payments', csrfProtection, require('./routes/payments'));
+
+// Tutor Application Routes — CSRF protection applied (state-changing multi-step form)
+app.use('/api/tutor-applications', csrfProtection, require('./routes/tutorApplications'));
+
+// Notification Routes
+app.use('/api/notifications', csrfProtection, require('./routes/notifications'));
 
 
 // Error handling middleware

@@ -8,7 +8,9 @@ Node.js + Express API for the SkillSwap peer skill-exchange marketplace.
 
 - Node.js 20+
 - MongoDB (local or Atlas)
-- Stripe account (test keys for development)
+- Khalti merchant account (test/sandbox secret key for development)
+- Google Cloud OAuth 2.0 Client ID (for "Continue with Google")
+- Google reCAPTCHA v2 site/secret key pair
 
 ---
 
@@ -28,9 +30,10 @@ cp .env.example .env   # then fill in your values
 | `JWT_SECRET` | Random 64-char string |
 | `JWT_REFRESH_SECRET` | Different random 64-char string |
 | `ENCRYPTION_KEY` | 64-char hex string (32 bytes) for AES-256 MFA secret encryption |
-| `HCAPTCHA_SECRET` | hCaptcha secret key (use `0x0000000000000000000000000000000000000000` for dev) |
-| `STRIPE_SECRET_KEY` | `sk_test_…` from Stripe dashboard |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_…` from `stripe listen` output |
+| `RECAPTCHA_SECRET_KEY` | Google reCAPTCHA v2 secret key (use the published test key `6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe` for dev — always passes) |
+| `GOOGLE_CLIENT_ID` | OAuth 2.0 Client ID from the Google Cloud Console, used to verify "Continue with Google" ID tokens |
+| `KHALTI_SECRET_KEY` | Secret key from the Khalti merchant dashboard (sandbox key for dev) |
+| `KHALTI_BASE_URL` | `https://dev.khalti.com` in dev, `https://khalti.com` in production |
 | `CLIENT_URL` | `http://localhost:5173` in dev |
 
 ---
@@ -42,10 +45,7 @@ cp .env.example .env   # then fill in your values
 cd server
 npm start          # starts on port 3000
 
-# Terminal 2 — Stripe webhook forwarding (requires Stripe CLI)
-stripe listen --forward-to localhost:3000/api/payments/webhook
-
-# Terminal 3 — React frontend
+# Terminal 2 — React frontend
 cd client
 npm run dev        # starts on port 5173
 ```
@@ -137,7 +137,7 @@ curl -X PATCH http://localhost:3000/api/bookings/<booking_id>/confirm \
   -H "X-CSRF-Token: <csrf>"
 ```
 
-**After fix**: returns `402 Payment required: complete Stripe checkout before confirming`.
+**After fix**: returns `402 Payment required: complete Khalti checkout before confirming`.
 
 ---
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Loader2, Inbox } from 'lucide-react';
 import api from '../utils/api';
 
 function ReviewModal({ booking, onClose, onSubmitted }) {
@@ -87,10 +88,10 @@ export default function Bookings() {
       </div>
 
       {loading ? (
-        <div className="empty"><div className="empty-icon">⏳</div><h3>Loading…</h3></div>
+        <div className="empty"><div className="icon-badge icon-badge-neutral icon-badge-lg" style={{ margin: '0 auto 16px' }}><Loader2 className="spin" aria-hidden="true" /></div><h3>Loading…</h3></div>
       ) : bookings.length === 0 ? (
         <div className="empty">
-          <div className="empty-icon">📭</div>
+          <div className="icon-badge icon-badge-neutral icon-badge-lg" style={{ margin: '0 auto 16px' }}><Inbox aria-hidden="true" /></div>
           <h3>No bookings yet</h3>
           <p style={{ marginBottom: 20 }}>Browse listings to book your first session</p>
           <a href="/listings" className="btn btn-primary">Browse skills</a>

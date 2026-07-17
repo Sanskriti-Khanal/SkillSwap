@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import HCaptcha from '@hcaptcha/react-hcaptcha';
+import ReCAPTCHA from 'react-google-recaptcha';
+import { GoogleLogin } from '@react-oauth/google';
 import { authApi, getErrorMessage } from '../utils/api';
 
 export default function Login() {
@@ -20,7 +21,7 @@ export default function Login() {
     if (!captchaToken) { setAlert({ type: 'alert-error', msg: 'Please complete the CAPTCHA' }); return; }
     setLoading(true);
     try {
-      const res = await authApi.post('/login', { email, password, 'h-captcha-response': captchaToken });
+      const res = await authApi.post('/login', { email, password, 'g-recaptcha-response': captchaToken });
       if (res.data.mfaRequired) {
         setRequiresMfa(true);
         setPendingUserId(res.data.userId);
@@ -31,8 +32,25 @@ export default function Login() {
       }
     } catch (err) {
       setAlert({ type: 'alert-error', msg: getErrorMessage(err) });
-      captchaRef.current?.resetCaptcha();
+      captchaRef.current?.reset();
       setCaptchaToken('');
+    } finally { setLoading(false); }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setLoading(true);
+    try {
+      const res = await authApi.post('/google', { credential: credentialResponse.credential });
+      if (res.data.mfaRequired) {
+        setRequiresMfa(true);
+        setPendingUserId(res.data.userId);
+        setAlert({ type: 'alert-success', msg: 'Enter your 6-digit authenticator code.' });
+      } else {
+        localStorage.setItem('accessToken', res.data.accessToken);
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      setAlert({ type: 'alert-error', msg: getErrorMessage(err) });
     } finally { setLoading(false); }
   };
 
@@ -74,11 +92,24 @@ export default function Login() {
               <input type="password" id="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••••••" />
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>
-              <HCaptcha sitekey="10000000-ffff-ffff-ffff-000000000001" onVerify={setCaptchaToken} ref={captchaRef} />
+              <ReCAPTCHA sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY} onChange={setCaptchaToken} ref={captchaRef} />
             </div>
             <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={loading}>
               {loading ? 'Logging in…' : 'Log in'}
             </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0', color: 'var(--muted)', fontSize: '.8125rem' }}>
+              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              or
+              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setAlert({ type: 'alert-error', msg: 'Google sign-in failed' })}
+              />
+            </div>
+
             <p style={{ textAlign: 'center', marginTop: 20, fontSize: '.875rem', color: 'var(--body)' }}>
               No account?{' '}
               <Link to="/register" style={{ color: 'var(--orange)', fontWeight: 600 }}>Sign up free</Link>

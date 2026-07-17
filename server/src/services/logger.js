@@ -54,6 +54,7 @@ if (process.env.NODE_ENV !== 'production') {
 function logEvent(userId, action, metadata = {}) {
   const { ipAddress, userAgent, ...rest } = metadata;
   logger.info({
+    message: action,
     userId: userId || null,
     action,
     ipAddress: ipAddress || null,
@@ -65,6 +66,11 @@ function logEvent(userId, action, metadata = {}) {
   writeTamperEvidentLog(userId, action, { ipAddress, userAgent, ...scrubPII(rest) });
 }
 
+// Writes must be strictly serialized: each entry's previous_hash has to match
+// the immediately preceding entry's hash, so two writes can never be in flight
+// at once or they'll read the same chain tip and collide on `sequence`.
+let auditChainQueue = Promise.resolve();
+
 /**
  * Append a hash-chained entry to the AuditLog collection.
  * Each entry's hash covers the previous_hash + its own content,
@@ -72,7 +78,14 @@ function logEvent(userId, action, metadata = {}) {
  * Errors are logged to Winston but never thrown — audit log failures must
  * not interrupt the request that triggered the event.
  */
-async function writeTamperEvidentLog(userId, action, metadata = {}) {
+function writeTamperEvidentLog(userId, action, metadata = {}) {
+  auditChainQueue = auditChainQueue.then(() =>
+    writeTamperEvidentLogEntry(userId, action, metadata)
+  );
+  return auditChainQueue;
+}
+
+async function writeTamperEvidentLogEntry(userId, action, metadata = {}) {
   try {
     // Lazy require to avoid circular dependency during app boot
     const AuditLog = require('../models/AuditLog');
@@ -89,7 +102,7 @@ async function writeTamperEvidentLog(userId, action, metadata = {}) {
 
     await AuditLog.create({ sequence, timestamp, userId: userId || null, action, metadata, hash, previous_hash });
   } catch (err) {
-    logger.error({ action: 'audit_chain.write_failed', error: err.message });
+    logger.error({ message: 'audit_chain.write_failed', action: 'audit_chain.write_failed', error: err.message });
   }
 }
 

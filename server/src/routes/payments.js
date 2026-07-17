@@ -1,17 +1,16 @@
 const express = require('express');
-const getStripe = require('../services/stripeService');
+const khalti = require('../services/khaltiService');
 const authMiddleware = require('../middleware/auth');
 const requireRole = require('../middleware/rbac');
 const Booking = require('../models/Booking');
-const Listing = require('../models/Listing');
 const { logEvent } = require('../services/logger');
 
 const router = express.Router();
 
-// @route   POST /api/payments/create-checkout-session
-// @desc    Create a Stripe Checkout session for a booking
+// @route   POST /api/payments/initiate
+// @desc    Start a Khalti ePayment (KPG v2) for a booking
 // @access  Private (learner)
-router.post('/create-checkout-session', authMiddleware, async (req, res) => {
+router.post('/initiate', authMiddleware, async (req, res) => {
   try {
     const { booking_id } = req.body;
     if (!booking_id) {
@@ -31,117 +30,115 @@ router.post('/create-checkout-session', authMiddleware, async (req, res) => {
       return res.status(400).json({ msg: 'This booking has already been paid' });
     }
 
-    // SECURITY: price fetched from DB — client-supplied amount is ignored
+    // SECURITY: amount is server-authoritative — read from the listing price, in
+    // paisa. The client never supplies (or influences) the amount sent to Khalti.
     const listing = booking.listing_id;
-    const amountInPaisa = Math.round(listing.price_per_session * 100); // NPR → paisa
+    const amountInPaisa = Math.round(listing.price_per_session * 100);
 
-    // Increment attempt number and save before calling Stripe to build a stable idempotency key
-    booking.attempt_number += 1;
+    const result = await khalti.initiate({
+      return_url: `${process.env.CLIENT_URL}/payment-success?booking_id=${booking._id}`,
+      website_url: process.env.CLIENT_URL,
+      amount: amountInPaisa,
+      purchase_order_id: booking._id.toString(),
+      purchase_order_name: listing.title,
+    });
+
+    booking.khalti_pidx = result.pidx;
     await booking.save();
 
-    const idempotencyKey = `${booking._id}-${booking.attempt_number}`;
+    logEvent(req.user.id, 'payment.initiated', {
+      ipAddress: req.ip,
+      bookingId: booking._id,
+      pidx: result.pidx,
+    });
 
-    const session = await getStripe().checkout.sessions.create(
-      {
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price_data: {
-              currency: 'npr',
-              product_data: {
-                name: listing.title,
-                description: `${listing.duration_minutes}-minute session with tutor`,
-              },
-              unit_amount: amountInPaisa,
-            },
-            quantity: 1,
-          },
-        ],
-        mode: 'payment',
-        success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.CLIENT_URL}/payment-cancel?booking_id=${booking._id}`,
-        metadata: {
-          booking_id: booking._id.toString(),
-        },
-      },
-      { idempotencyKey }
-    );
-
-    // Store session ID so the webhook can look up the booking
-    booking.stripe_session_id = session.id;
-    await booking.save();
-
-    res.json({ url: session.url });
+    res.json({ payment_url: result.payment_url });
   } catch (err) {
-    console.error('Stripe checkout error:', err.message);
-    res.status(500).json({ msg: 'Payment session creation failed' });
+    console.error('Khalti initiate error:', err.message);
+    res.status(502).json({ msg: 'Payment initiation failed' });
   }
 });
 
-// @route   POST /api/payments/webhook
-// @desc    Handle Stripe webhook events
-// @access  Public (Stripe-signed only)
-// NOTE: This route must receive the raw body — see app.js for express.raw() mount
-router.post('/webhook', async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-
-  let event;
+// @route   POST /api/payments/verify
+// @desc    Confirm a Khalti payment via server-side lookup (never trust redirect query params)
+// @access  Private (learner)
+// NOTE: KPG v2 has no completion webhook — this lookup is the only source of truth.
+router.post('/verify', authMiddleware, async (req, res) => {
   try {
-    // SECURITY: webhook signature verified — prevents spoofed payment confirmations
-    event = getStripe().webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).json({ msg: `Webhook Error: ${err.message}` });
-  }
+    const { booking_id } = req.body;
+    if (!booking_id) {
+      return res.status(400).json({ msg: 'booking_id is required' });
+    }
 
-  try {
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-      const bookingId = session.metadata?.booking_id;
+    const booking = await Booking.findById(booking_id).populate('listing_id');
+    if (!booking) {
+      return res.status(404).json({ msg: 'Booking not found' });
+    }
 
-      if (bookingId) {
-        await Booking.findByIdAndUpdate(bookingId, {
-          payment_status: 'paid',
-          status: 'confirmed',
+    if (booking.learner_id.toString() !== req.user.id) {
+      return res.status(403).json({ msg: 'Forbidden' });
+    }
+
+    // Idempotent short-circuit — already settled, no need to hit Khalti again
+    if (booking.payment_status === 'paid') {
+      return res.json({ status: 'paid' });
+    }
+
+    if (!booking.khalti_pidx) {
+      return res.status(400).json({ msg: 'No payment has been initiated for this booking' });
+    }
+
+    const result = await khalti.lookup(booking.khalti_pidx);
+    const expectedAmount = Math.round(booking.listing_id.price_per_session * 100);
+
+    if (result.status === 'Completed' && result.total_amount === expectedAmount) {
+      // SECURITY: the conditional filter (payment_status != 'paid') makes settlement
+      // idempotent — concurrent/duplicate verify calls for the same booking cannot
+      // double-settle it, and the unique index on khalti_pidx prevents a pidx from
+      // ever being attached to more than one booking.
+      const updated = await Booking.findOneAndUpdate(
+        { _id: booking._id, payment_status: { $ne: 'paid' } },
+        { payment_status: 'paid', status: 'confirmed' },
+        { new: true }
+      );
+      if (updated) {
+        logEvent(req.user.id, 'payment.completed', {
+          ipAddress: req.ip,
+          bookingId: booking._id,
+          pidx: booking.khalti_pidx,
         });
-        logEvent(null, 'payment.completed', { bookingId, stripeSessionId: session.id });
       }
+      return res.json({ status: 'paid' });
     }
 
-    if (event.type === 'payment_intent.payment_failed') {
-      const intent = event.data.object;
-      // Find booking by stripe_session_id via the checkout session
-      // payment_intent.metadata is set if created via PaymentIntent directly;
-      // for Checkout-initiated flows we match via the stored session ID
-      const booking = await Booking.findOne({
-        stripe_session_id: { $exists: true },
-        payment_status: 'unpaid',
-      }).where('stripe_session_id').ne(null);
-
-      if (booking) {
-        booking.payment_status = 'payment_failed';
-        await booking.save();
-        logEvent(null, 'payment.failed', { bookingId: booking._id });
-      }
+    if (['Expired', 'User canceled'].includes(result.status)) {
+      booking.payment_status = 'payment_failed';
+      await booking.save();
+      logEvent(req.user.id, 'payment.failed', {
+        ipAddress: req.ip,
+        bookingId: booking._id,
+        khaltiStatus: result.status,
+      });
+      return res.json({ status: 'failed', khaltiStatus: result.status });
     }
 
-    res.json({ received: true });
+    // Pending / partially refunded / anything else transient — don't mutate the booking
+    return res.json({ status: 'pending', khaltiStatus: result.status });
   } catch (err) {
-    console.error('Webhook handler error:', err.message);
-    res.status(500).json({ msg: 'Webhook processing failed' });
+    console.error('Khalti verify error:', err.message);
+    res.status(502).json({ msg: 'Payment verification failed' });
   }
 });
 
 // @route   POST /api/payments/refund/:bookingId
-// @desc    Refund a payment and update booking status
+// @desc    Mark a booking refunded for reconciliation
 // @access  Private (admin only)
+// NOTE: Khalti's public KPG v2 API has no programmatic refund endpoint — refunds must
+// be issued manually from the Khalti merchant dashboard. This route only records that
+// a refund was issued so the booking status stays consistent for reconciliation.
 router.post('/refund/:bookingId', [authMiddleware, requireRole('admin')], async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.bookingId).populate('listing_id');
+    const booking = await Booking.findById(req.params.bookingId);
     if (!booking) {
       return res.status(404).json({ msg: 'Booking not found' });
     }
@@ -150,27 +147,6 @@ router.post('/refund/:bookingId', [authMiddleware, requireRole('admin')], async 
       return res.status(400).json({ msg: 'Only paid bookings can be refunded' });
     }
 
-    if (!booking.stripe_session_id) {
-      return res.status(400).json({ msg: 'No Stripe session found for this booking' });
-    }
-
-    // Fetch the Stripe session to get the PaymentIntent ID
-    const session = await getStripe().checkout.sessions.retrieve(booking.stripe_session_id);
-    if (!session.payment_intent) {
-      return res.status(400).json({ msg: 'No payment intent found for this session' });
-    }
-
-    // Issue the refund via Stripe
-    let refund;
-    try {
-      refund = await getStripe().refunds.create({ payment_intent: session.payment_intent });
-    } catch (stripeErr) {
-      console.error('Stripe refund failed:', stripeErr.message);
-      return res.status(502).json({ msg: 'Stripe refund failed — booking status unchanged' });
-    }
-
-    // Only update DB after Stripe succeeds — if this fails, the refund exists in Stripe
-    // and can be reconciled manually via the Stripe dashboard
     booking.payment_status = 'refunded';
     booking.status = 'refunded';
     await booking.save();
@@ -178,9 +154,9 @@ router.post('/refund/:bookingId', [authMiddleware, requireRole('admin')], async 
     logEvent(req.user.id, 'payment.refunded', {
       ipAddress: req.ip,
       bookingId: booking._id,
-      refundId: refund.id,
     });
-    res.json({ msg: 'Refund issued successfully', refund_id: refund.id });
+
+    res.json({ msg: 'Booking marked as refunded. Issue the refund manually via the Khalti merchant dashboard.' });
   } catch (err) {
     console.error('Refund error:', err.message);
     res.status(500).json({ msg: 'Refund processing failed' });

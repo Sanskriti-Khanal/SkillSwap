@@ -8,9 +8,20 @@ const userSchema = new mongoose.Schema({
     trim: true,
     lowercase: true,
   },
+  // Required for local (password) accounts; absent for Google-only accounts.
   password_hash: {
     type: String,
-    required: true,
+    required: function () { return !this.google_id; },
+  },
+  // Set once a Google sign-in creates or links this account. Sparse+unique so multiple
+  // local-only accounts (no google_id at all) don't collide on the index. Deliberately no
+  // `default: null` — a sparse index only skips documents where the field is ABSENT, not
+  // documents where it's explicitly null, so a default of null defeats the sparse behavior
+  // and makes every second local signup fail with a duplicate-key error.
+  google_id: {
+    type: String,
+    unique: true,
+    sparse: true,
   },
   mfa_enabled: {
     type: Boolean,

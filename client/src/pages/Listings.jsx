@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Search, Loader2, Inbox } from 'lucide-react';
 import api from '../utils/api';
 
 const CATEGORIES = ['Programming', 'Design', 'Business', 'Music', 'Language', 'Mathematics', 'Science', 'Other'];
@@ -40,7 +41,7 @@ export default function Listings() {
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 32, alignItems: 'center' }}>
         <form onSubmit={handleSearch} className="search-wrap" style={{ flex: '1 1 260px' }}>
-          <span className="search-icon">🔍</span>
+          <span className="search-icon"><Search aria-hidden="true" /></span>
           <input
             type="text"
             placeholder="Search by title…"
@@ -60,10 +61,10 @@ export default function Listings() {
       </div>
 
       {loading ? (
-        <div className="empty"><div className="empty-icon">⏳</div><h3>Loading…</h3></div>
+        <div className="empty"><div className="icon-badge icon-badge-neutral icon-badge-lg" style={{ margin: '0 auto 16px' }}><Loader2 className="spin" aria-hidden="true" /></div><h3>Loading…</h3></div>
       ) : listings.length === 0 ? (
         <div className="empty">
-          <div className="empty-icon">📭</div>
+          <div className="icon-badge icon-badge-neutral icon-badge-lg" style={{ margin: '0 auto 16px' }}><Inbox aria-hidden="true" /></div>
           <h3>No listings found</h3>
           <p>Try a different search or category</p>
         </div>

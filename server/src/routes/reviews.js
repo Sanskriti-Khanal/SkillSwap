@@ -66,6 +66,23 @@ router.post('/', [
   }
 });
 
+// @route   GET /api/reviews/tutor/me
+// @desc    Get all reviews received by the authenticated tutor
+// @access  Private
+router.get('/tutor/me', async (req, res) => {
+  try {
+    const reviews = await Review.find({ tutor_id: req.user.id })
+      .populate('learner_id', 'email profile_photo_url')
+      .populate('listing_id', 'title')
+      .sort({ createdAt: -1 });
+
+    res.json(reviews);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
 // @route   GET /api/reviews/listing/:listingId
 // @desc    Get all reviews for a listing
 // @access  Public

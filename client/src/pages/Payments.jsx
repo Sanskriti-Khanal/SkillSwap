@@ -35,9 +35,9 @@ export default function Payments() {
     setError('');
     setRedirecting(true);
     try {
-      const res = await api.post('/payments/create-checkout-session', { booking_id: bookingId });
-      // Redirect to Stripe Checkout
-      window.location.href = res.data.url;
+      const res = await api.post('/payments/initiate', { booking_id: bookingId });
+      // Redirect to Khalti's hosted checkout
+      window.location.href = res.data.payment_url;
     } catch (err) {
       setError(err.response?.data?.msg || 'Failed to start payment session.');
       setRedirecting(false);
@@ -93,7 +93,7 @@ export default function Payments() {
         <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
           {error && <p style={{ color: 'var(--error)', fontSize: '0.875rem', marginBottom: '1rem' }}>{error}</p>}
           <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-            You will be redirected to Stripe to complete payment securely.
+            You will be redirected to Khalti to complete payment securely.
           </p>
           <button
             className="btn btn-primary"
@@ -101,10 +101,10 @@ export default function Payments() {
             onClick={handlePay}
             disabled={redirecting}
           >
-            {redirecting ? 'Redirecting to Stripe...' : `Pay NPR ${listing?.price_per_session}`}
+            {redirecting ? 'Redirecting to Khalti...' : `Pay NPR ${listing?.price_per_session}`}
           </button>
           <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-            Secured by Stripe
+            Secured by Khalti
           </div>
         </div>
       )}

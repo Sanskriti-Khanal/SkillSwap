@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import HCaptcha from '@hcaptcha/react-hcaptcha';
+import ReCAPTCHA from 'react-google-recaptcha';
+import { GoogleLogin } from '@react-oauth/google';
 import { authApi, getErrorMessage } from '../utils/api';
 
 const STRENGTH_COLORS = ['#DC2626', '#F97316', '#EAB308', '#84CC16', '#61B44E'];
@@ -24,7 +25,7 @@ export default function Register() {
         const res = await authApi.post('/password-strength', { password });
         setStrengthScore(res.data.score);
         setStrengthFeedback(res.data.feedback?.warning || '');
-      } catch (_) {}
+      } catch (_) { }
     }, 300);
     return () => clearTimeout(t);
   }, [password]);
@@ -34,13 +35,29 @@ export default function Register() {
     if (!captchaToken) { setAlert({ type: 'alert-error', msg: 'Please complete the CAPTCHA' }); return; }
     setLoading(true);
     try {
-      await authApi.post('/register', { email, password, 'h-captcha-response': captchaToken });
+      await authApi.post('/register', { email, password, 'g-recaptcha-response': captchaToken });
       setAlert({ type: 'alert-success', msg: 'Account created! Redirecting to login…' });
       setTimeout(() => navigate('/login'), 1800);
     } catch (err) {
       setAlert({ type: 'alert-error', msg: getErrorMessage(err) });
-      captchaRef.current?.resetCaptcha();
+      captchaRef.current?.reset();
       setCaptchaToken('');
+    } finally { setLoading(false); }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setLoading(true);
+    try {
+      const res = await authApi.post('/google', { credential: credentialResponse.credential });
+      if (res.data.mfaRequired) {
+        // This account already has MFA enabled — finish the login flow there.
+        navigate('/login');
+      } else {
+        localStorage.setItem('accessToken', res.data.accessToken);
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      setAlert({ type: 'alert-error', msg: getErrorMessage(err) });
     } finally { setLoading(false); }
   };
 
@@ -83,12 +100,24 @@ export default function Register() {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>
-            <HCaptcha sitekey="10000000-ffff-ffff-ffff-000000000001" onVerify={setCaptchaToken} ref={captchaRef} />
+              <ReCAPTCHA sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY} onChange={setCaptchaToken} ref={captchaRef} />
           </div>
 
           <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={loading}>
             {loading ? 'Creating account…' : 'Create account'}
           </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0', color: 'var(--muted)', fontSize: '.8125rem' }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            or
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => setAlert({ type: 'alert-error', msg: 'Google sign-in failed' })}
+            />
+          </div>
 
           <p style={{ textAlign: 'center', marginTop: 20, fontSize: '.875rem', color: 'var(--body)' }}>
             Already have an account?{' '}

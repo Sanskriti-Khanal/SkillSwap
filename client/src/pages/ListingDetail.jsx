@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import api from '../utils/api';
 
 export default function ListingDetail() {
@@ -36,7 +37,9 @@ export default function ListingDetail() {
 
   return (
     <div className="page fade-up" style={{ maxWidth: 900 }}>
-      <button className="btn btn-ghost btn-sm" onClick={() => navigate('/listings')} style={{ marginBottom: 24 }}>← Back to listings</button>
+      <button className="btn btn-ghost btn-sm" onClick={() => navigate('/listings')} style={{ marginBottom: 24, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <ArrowLeft className="icon-inline" aria-hidden="true" /> Back to listings
+      </button>
 
       <div style={{ display: 'flex', gap: 40, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         {/* Left: details */}
@@ -93,8 +96,8 @@ export default function ListingDetail() {
                 </button>
               </>
             ) : (
-              <button className="btn btn-secondary btn-lg" style={{ width: '100%' }} onClick={() => navigate('/bookings')}>
-                View my bookings →
+              <button className="btn btn-secondary btn-lg" style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => navigate('/bookings')}>
+                View my bookings <ArrowRight className="icon-inline" aria-hidden="true" />
               </button>
             )}
           </div>

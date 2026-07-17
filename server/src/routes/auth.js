@@ -16,6 +16,7 @@ const { logEvent } = require('../services/logger');
 const LoginAttempt = require('../models/LoginAttempt');
 const RevokedToken = require('../models/RevokedToken');
 const { isPasswordPwned } = require('../services/hibpService');
+const { verifyGoogleIdToken } = require('../services/googleAuthService');
 
 
 
@@ -152,6 +153,12 @@ router.post('/login', authRateLimiter, captchaMiddleware, [
       return res.status(400).json({ msg: 'Invalid Credentials' }); // Generic error
     }
 
+    // Google-only accounts have no password_hash — generic error avoids leaking
+    // that the account exists and how it was created (no user enumeration).
+    if (!user.password_hash) {
+      return res.status(400).json({ msg: 'Invalid Credentials' });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password_hash);
     
     if(!isMatch) {
@@ -237,6 +244,81 @@ router.post('/login', authRateLimiter, captchaMiddleware, [
       userAgent: req.headers['user-agent'],
     });
 
+    res.json({ accessToken });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   POST /api/auth/google
+// @desc    Sign in (or register) with a Google ID token, issue our own JWTs
+// @access  Public
+router.post('/google', authRateLimiter, async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) {
+    return res.status(400).json({ msg: 'Google credential is required' });
+  }
+
+  let payload;
+  try {
+    payload = await verifyGoogleIdToken(credential);
+  } catch (err) {
+    return res.status(401).json({ msg: 'Invalid Google credential' });
+  }
+
+  // SECURITY: require Google's own email_verified claim — without this an attacker
+  // could sign in as any address using a Google account they created but never proved
+  // ownership of (e.g. via a Workspace domain that skips verification).
+  if (!payload?.email_verified) {
+    return res.status(401).json({ msg: 'Google account email is not verified' });
+  }
+
+  const email = payload.email.toLowerCase();
+  const googleId = payload.sub;
+
+  try {
+    let user = await User.findOne({ google_id: googleId });
+
+    if (!user) {
+      const existingLocal = await User.findOne({ email });
+      if (existingLocal) {
+        // SECURITY: never auto-link a Google identity to a pre-existing local account
+        // by email match alone. Local account emails are never verified in this app,
+        // so a matching email is not proof that the same person controls both — silently
+        // linking would let anyone who once registered a victim's email locally inherit
+        // whatever the victim's real Google sign-in grants. Require an explicit password
+        // login instead (a future "link Google" flow can do this safely once authenticated).
+        return res.status(409).json({
+          msg: 'An account with this email already exists. Log in with your password to continue.',
+        });
+      }
+
+      user = new User({ email, google_id: googleId });
+      await user.save();
+      logEvent(user._id, 'user.register_google', { ipAddress: req.ip, userAgent: req.headers['user-agent'] });
+    }
+
+    if (user.locked_until && user.locked_until > Date.now()) {
+      return res.status(400).json({ msg: 'Invalid Credentials' });
+    }
+
+    // MFA, if enabled on the account, still applies regardless of login method
+    if (user.mfa_enabled) {
+      return res.status(200).json({ mfaRequired: true, userId: user.id });
+    }
+
+    const fingerprint = getFingerprint(req);
+    const { accessToken, refreshToken } = generateTokens(user, fingerprint);
+
+    res.cookie('__Host-skillswap-session', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    logEvent(user._id, 'user.login_google', { ipAddress: req.ip, userAgent: req.headers['user-agent'] });
     res.json({ accessToken });
   } catch (err) {
     console.error(err.message);

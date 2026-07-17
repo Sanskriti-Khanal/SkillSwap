@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { authApi } from '../utils/api';
+import NotificationBell from './NotificationBell';
 
 export default function Navbar() {
   const location = useLocation();
@@ -38,6 +39,7 @@ export default function Navbar() {
           </>
         ) : isLoggedIn ? (
           <>
+            <NotificationBell />
             <Link to="/profile" className="avatar" title="Profile">ME</Link>
             <button className="btn btn-secondary btn-sm" onClick={handleLogout}>Log out</button>
           </>
