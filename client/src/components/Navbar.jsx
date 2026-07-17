@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { authApi } from '../utils/api';
+import { ShieldCheck } from 'lucide-react';
+import api, { authApi } from '../utils/api';
 import NotificationBell from './NotificationBell';
 
 export default function Navbar() {
@@ -7,6 +9,12 @@ export default function Navbar() {
   const navigate = useNavigate();
   const isAuthPage = ['/login', '/register'].includes(location.pathname);
   const isLoggedIn = !!localStorage.getItem('accessToken');
+  const [role, setRole] = useState(null);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    api.get('/users/me').then((r) => setRole(r.data.role)).catch(() => {});
+  }, [isLoggedIn]);
 
   const handleLogout = async () => {
     try { await authApi.post('/logout'); } catch (_) {}
@@ -14,7 +22,7 @@ export default function Navbar() {
     navigate('/login');
   };
 
-  const isActive = (path) => location.pathname === path ? 'nav-link active' : 'nav-link';
+  const isActive = (path) => location.pathname.startsWith(path) ? 'nav-link active' : 'nav-link';
 
   return (
     <nav className="navbar">
@@ -28,6 +36,12 @@ export default function Navbar() {
           <Link to="/dashboard" className={isActive('/dashboard')}>Dashboard</Link>
           <Link to="/listings"  className={isActive('/listings')}>Browse</Link>
           <Link to="/bookings"  className={isActive('/bookings')}>Bookings</Link>
+          {role === 'admin' && (
+            <Link to="/admin/tutor-applications" className={isActive('/admin/tutor-applications')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <ShieldCheck className="icon-inline" aria-hidden="true" />
+              Admin
+            </Link>
+          )}
         </div>
       )}
 
