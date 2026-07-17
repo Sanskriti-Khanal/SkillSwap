@@ -27,11 +27,17 @@ module.exports = async function (req, res, next) {
 
     req.user = decoded.user;
 
-    // Check password expiry (90 days)
-    const user = await User.findById(req.user.id).select('password_changed_at');
+    // Check password expiry (90 days). Also re-read role fresh from the DB rather than
+    // trusting the JWT's embedded value — the token can be up to 15 minutes old, and an
+    // admin action (e.g. approving a tutor application) changes the DB role immediately.
+    // Without this, a user keeps hitting 403s on role-gated routes until their token
+    // happens to expire/refresh or they log out and back in, even though every page that
+    // reads /users/me (a fresh DB read) already shows their correct new role.
+    const user = await User.findById(req.user.id).select('password_changed_at role');
     if (!user) {
       return res.status(401).json({ msg: 'User not found' });
     }
+    req.user.role = user.role;
 
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
