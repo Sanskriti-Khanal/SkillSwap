@@ -88,7 +88,10 @@ export default function Login() {
               <input type="email" id="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@example.com" />
             </div>
             <div className="form-group">
-              <label htmlFor="password">Password</label>
+              <label htmlFor="password" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                Password
+                <Link to="/forgot-password" style={{ color: 'var(--orange)', fontWeight: 500, fontSize: '.8125rem' }}>Forgot password?</Link>
+              </label>
               <input type="password" id="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••••••" />
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>

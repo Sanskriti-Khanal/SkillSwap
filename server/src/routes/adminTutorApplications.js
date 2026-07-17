@@ -23,6 +23,10 @@ const router = express.Router();
 router.use(authMiddleware, requireRole('admin'));
 
 const REVIEWABLE_STATUSES = ['pending_review', 'under_review', 'needs_more_info'];
+// Approve is also allowed from 'rejected' (covers re-approving after a revoke, which
+// sets status to 'rejected') and 'suspended' (reinstating a suspended tutor) — an admin
+// reversing an earlier decision shouldn't require the applicant to resubmit from scratch.
+const APPROVABLE_STATUSES = [...REVIEWABLE_STATUSES, 'rejected', 'suspended'];
 
 async function loadFullApplication(id) {
   const application = await TutorApplication.findById(id).populate('user_id', 'email role createdAt');
@@ -157,7 +161,7 @@ router.patch('/:id/approve', async (req, res) => {
   try {
     const application = await TutorApplication.findById(req.params.id);
     if (!application) return res.status(404).json({ msg: 'Application not found' });
-    if (!REVIEWABLE_STATUSES.includes(application.status)) {
+    if (!APPROVABLE_STATUSES.includes(application.status)) {
       return res.status(409).json({ msg: `Cannot approve an application with status ${application.status}` });
     }
 

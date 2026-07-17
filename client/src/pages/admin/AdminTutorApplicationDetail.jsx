@@ -149,11 +149,13 @@ export default function AdminTutorApplicationDetail() {
       {/* Actions */}
       <Section title="Admin Actions">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {['pending_review', 'under_review', 'needs_more_info', 'rejected', 'suspended'].includes(status) && (
+            <button className="btn btn-primary" disabled={busy} onClick={() => runAction('/approve', {}, status === 'rejected' || status === 'suspended' ? 'Tutor re-approved' : 'Application approved')}>
+              {status === 'rejected' || status === 'suspended' ? 'Approve Again' : 'Approve'}
+            </button>
+          )}
           {['pending_review', 'under_review', 'needs_more_info'].includes(status) && (
-            <>
-              <button className="btn btn-primary" disabled={busy} onClick={() => runAction('/approve', {}, 'Application approved')}>Approve</button>
-              <button className="btn btn-danger" disabled={busy} onClick={() => setShowReasonFor('reject')}>Reject</button>
-            </>
+            <button className="btn btn-danger" disabled={busy} onClick={() => setShowReasonFor('reject')}>Reject</button>
           )}
           {['pending_review', 'under_review'].includes(status) && (
             <button className="btn btn-secondary" disabled={busy} onClick={() => setShowReasonFor('request-more-info')}>Request More Info</button>

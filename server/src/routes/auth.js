@@ -17,6 +17,8 @@ const LoginAttempt = require('../models/LoginAttempt');
 const RevokedToken = require('../models/RevokedToken');
 const { isPasswordPwned } = require('../services/hibpService');
 const { verifyGoogleIdToken } = require('../services/googleAuthService');
+const { sendPasswordResetEmail, sendPasswordChangedEmail } = require('../services/emailService');
+const PasswordResetToken = require('../models/PasswordResetToken');
 
 
 
@@ -493,6 +495,38 @@ router.post('/mfa/verify', async (req, res) => {
   }
 });
 
+// Shared by both the logged-in "change password" route below and the anonymous
+// "reset with token" flow: HIBP breach check, reuse-history check, hash + save.
+// Returns { ok: true } or { ok: false, status, msg } so callers can respond appropriately.
+async function applyNewPassword(user, newPassword) {
+  const pwnedCount = await isPasswordPwned(newPassword);
+  if (pwnedCount > 0) {
+    return {
+      ok: false, status: 400,
+      msg: `This password has appeared in ${pwnedCount.toLocaleString()} data breach(es). Please choose a different password.`,
+    };
+  }
+
+  const history = await PasswordHistory.find({ userId: user.id }).sort({ createdAt: -1 }).limit(5);
+  for (const record of history) {
+    const isMatch = await bcrypt.compare(newPassword, record.password_hash);
+    if (isMatch) {
+      return { ok: false, status: 400, msg: 'Password has been used recently. Please choose a different password.' };
+    }
+  }
+
+  const salt = await bcrypt.genSalt(12);
+  const password_hash = await bcrypt.hash(newPassword, salt);
+
+  user.password_hash = password_hash;
+  user.password_changed_at = Date.now();
+  await user.save();
+
+  await PasswordHistory.create({ userId: user.id, password_hash });
+
+  return { ok: true };
+}
+
 // @route   POST /api/auth/password/reset
 // @desc    Reset password (requires valid JWT, meaning user is logged in but might be blocked by 403 on other routes)
 // @access  Private
@@ -526,37 +560,8 @@ router.post('/password/reset', [
 
     const { newPassword } = req.body;
 
-    // HIBP breach check on password reset too
-    const pwnedCount = await isPasswordPwned(newPassword);
-    if (pwnedCount > 0) {
-      return res.status(400).json({
-        msg: `This password has appeared in ${pwnedCount.toLocaleString()} data breach(es). Please choose a different password.`
-      });
-    }
-
-    // Check last 5 passwords
-    const history = await PasswordHistory.find({ userId: user.id }).sort({ createdAt: -1 }).limit(5);
-    for (let record of history) {
-      const isMatch = await bcrypt.compare(newPassword, record.password_hash);
-      if (isMatch) {
-        return res.status(400).json({ msg: 'Password has been used recently. Please choose a different password.' });
-      }
-    }
-
-    // Hash new password
-    const salt = await bcrypt.genSalt(12);
-    const password_hash = await bcrypt.hash(newPassword, salt);
-
-    // Update user
-    user.password_hash = password_hash;
-    user.password_changed_at = Date.now();
-    await user.save();
-
-    // Add to history
-    await PasswordHistory.create({
-      userId: user.id,
-      password_hash
-    });
+    const result = await applyNewPassword(user, newPassword);
+    if (!result.ok) { return res.status(result.status).json({ msg: result.msg }); }
 
     logEvent(user._id, 'user.password_changed', {
       ipAddress: req.ip,
@@ -565,6 +570,107 @@ router.post('/password/reset', [
 
     res.json({ msg: 'Password updated successfully' });
 
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   POST /api/auth/password/forgot
+// @desc    Request a password reset email for an account that isn't logged in.
+// @access  Public
+// SECURITY: always returns the same generic response whether or not the email exists
+// — a different response would let an attacker enumerate registered accounts.
+router.post('/password/forgot', authRateLimiter, captchaMiddleware, [
+  body('email').isEmail().withMessage('Please provide a valid email address').normalizeEmail(),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
+
+  const GENERIC_RESPONSE = { msg: 'If an account with that email exists, we\'ve sent a password reset link.' };
+
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    // Google-only accounts have no password_hash — nothing to reset. Silently no-op
+    // (same generic response) rather than revealing account existence or sign-in method.
+    if (!user || !user.password_hash) {
+      return res.json(GENERIC_RESPONSE);
+    }
+
+    // Invalidate any previous unused reset tokens for this user before issuing a new
+    // one — only the most recently requested link should ever be valid.
+    await PasswordResetToken.deleteMany({ user_id: user._id, used_at: null });
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    await PasswordResetToken.create({
+      user_id: user._id,
+      token_hash: tokenHash,
+      expires_at: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
+    });
+
+    const resetLink = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${rawToken}`;
+    await sendPasswordResetEmail(user.email, resetLink);
+
+    logEvent(user._id, 'user.password_reset_requested', {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    res.json(GENERIC_RESPONSE);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// @route   POST /api/auth/password/reset-with-token
+// @desc    Redeem a password reset link (no login required) and set a new password.
+// @access  Public
+router.post('/password/reset-with-token', authRateLimiter, [
+  body('token', 'Reset token is required').not().isEmpty(),
+  body('newPassword')
+    .isLength({ min: 12 }).withMessage('Password must be at least 12 characters long')
+    .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
+    .matches(/[a-z]/).withMessage('Password must contain at least one lowercase letter')
+    .matches(/[0-9]/).withMessage('Password must contain at least one number')
+    .matches(/[\W_]/).withMessage('Password must contain at least one special character'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
+
+  const INVALID_MSG = { msg: 'This reset link is invalid or has expired. Please request a new one.' };
+
+  try {
+    const { token, newPassword } = req.body;
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const resetToken = await PasswordResetToken.findOne({
+      token_hash: tokenHash,
+      used_at: null,
+      expires_at: { $gt: new Date() },
+    });
+    if (!resetToken) { return res.status(400).json(INVALID_MSG); }
+
+    const user = await User.findById(resetToken.user_id);
+    if (!user || !user.password_hash) { return res.status(400).json(INVALID_MSG); }
+
+    const result = await applyNewPassword(user, newPassword);
+    if (!result.ok) { return res.status(result.status).json({ msg: result.msg }); }
+
+    // Single-use — mark spent immediately so the same link can't be replayed.
+    resetToken.used_at = new Date();
+    await resetToken.save();
+
+    logEvent(user._id, 'user.password_reset_completed', {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    sendPasswordChangedEmail(user.email).catch((err) => console.error('sendPasswordChangedEmail failed:', err.message));
+
+    res.json({ msg: 'Password reset successfully. You can now log in.' });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');
