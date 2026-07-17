@@ -112,7 +112,23 @@ textarea{resize:vertical;min-height:96px}
 .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 24px;box-shadow:var(--shadow-sm)}
 .stat-label{font-size:.8125rem;font-weight:500;color:var(--muted);margin-bottom:4px}
 .stat-value{font-size:1.625rem;font-weight:700;color:var(--dark)}
-.stat-icon{font-size:1.25rem;margin-bottom:8px}
+.stat-icon{width:40px;height:40px;border-radius:var(--radius-md);background:var(--orange-light);color:var(--orange);display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.stat-icon svg{width:20px;height:20px;stroke-width:1.75}
+
+/* Generic icon badge — square/circle tinted background behind a lucide icon,
+   used anywhere an emoji used to sit (quick actions, empty states, nav, etc). */
+.icon-badge{width:40px;height:40px;border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.icon-badge svg{width:20px;height:20px;stroke-width:1.75}
+.icon-badge-orange{background:var(--orange-light);color:var(--orange)}
+.icon-badge-neutral{background:#F0EDEB;color:var(--body)}
+.icon-badge-green{background:var(--success-bg);color:var(--success)}
+.icon-badge-sm{width:30px;height:30px}
+.icon-badge-sm svg{width:16px;height:16px}
+.icon-badge-lg{width:56px;height:56px;border-radius:var(--radius-lg)}
+.icon-badge-lg svg{width:28px;height:28px}
+
+/* Inline icon utility — matches surrounding text size, sits on the text baseline */
+.icon-inline{width:1em;height:1em;stroke-width:2;vertical-align:-0.15em}
 
 /* Listing cards */
 .listing-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
@@ -130,7 +146,8 @@ textarea{resize:vertical;min-height:96px}
 /* Search */
 .search-wrap{position:relative;max-width:480px}
 .search-wrap input{padding-left:2.75rem;border-radius:var(--radius-full)}
-.search-icon{position:absolute;left:1rem;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;font-size:.95rem}
+.search-icon{position:absolute;left:1rem;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;display:flex}
+.search-icon svg{width:17px;height:17px;stroke-width:1.75}
 
 /* Table */
 .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
@@ -188,3 +205,55 @@ tbody tr:hover td{background:#FAF8F7}
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 @keyframes floatY { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+@keyframes spin { to{transform:rotate(360deg)} }
+.spin{animation:spin 1s linear infinite}
+
+/* Wizard stepper */
+.stepper{display:flex;align-items:flex-start;gap:0;margin-bottom:32px;overflow-x:auto;padding-bottom:4px}
+.stepper-item{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:84px;position:relative}
+.stepper-item:not(:last-child)::after{content:'';position:absolute;top:15px;left:calc(50% + 22px);width:calc(100% - 44px);height:2px;background:var(--border);z-index:0}
+.stepper-item.completed:not(:last-child)::after{background:var(--orange)}
+.stepper-dot{width:30px;height:30px;border-radius:50%;background:var(--surface);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.8125rem;font-weight:700;color:var(--muted);z-index:1;transition:all var(--t)}
+.stepper-item.active .stepper-dot{border-color:var(--orange);color:var(--orange);box-shadow:0 0 0 4px rgba(244,123,32,.15)}
+.stepper-item.completed .stepper-dot{background:var(--orange);border-color:var(--orange);color:#fff}
+.stepper-label{font-size:.75rem;font-weight:600;color:var(--muted);text-align:center}
+.stepper-item.active .stepper-label{color:var(--dark)}
+.stepper-item.completed .stepper-label{color:var(--orange)}
+.stepper-item.clickable{cursor:pointer}
+
+.progress-bar{height:6px;border-radius:var(--radius-full);background:var(--border);overflow:hidden;margin-bottom:24px}
+.progress-fill{height:100%;background:var(--orange);border-radius:var(--radius-full);transition:width .35s ease}
+
+.autosave-indicator{font-size:.8125rem;color:var(--muted);display:flex;align-items:center;gap:6px;min-height:1.2em}
+
+/* File dropzone */
+.dropzone{border:2px dashed var(--border);border-radius:var(--radius-lg);padding:28px 20px;text-align:center;cursor:pointer;transition:all var(--t);background:var(--surface)}
+.dropzone:hover,.dropzone.dragover{border-color:var(--orange);background:var(--orange-light)}
+.dropzone-icon{display:flex;justify-content:center;margin-bottom:8px;color:var(--muted)}
+.dropzone-icon svg{width:28px;height:28px;stroke-width:1.5}
+.dropzone-hint{font-size:.8125rem;color:var(--muted);margin-top:4px}
+.dropzone input[type=file]{display:none}
+.dropzone-progress{height:4px;border-radius:var(--radius-full);background:var(--border);overflow:hidden;margin-top:10px}
+.dropzone-progress-fill{height:100%;background:var(--orange);border-radius:var(--radius-full);transition:width .2s ease}
+.uploaded-file{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-md);font-size:.875rem;margin-top:10px}
+.uploaded-file-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Checkbox rows (agreements step) */
+.checkbox-row{display:flex;align-items:flex-start;gap:10px;padding:12px 0}
+.checkbox-row input[type=checkbox]{width:18px;height:18px;margin-top:2px;accent-color:var(--orange);flex-shrink:0}
+.checkbox-row label{font-weight:500;font-size:.9375rem;color:var(--dark)}
+
+/* Sidebar layout (tutor dashboard, admin) */
+.sidebar-layout{display:flex;gap:32px;max-width:var(--max-w);margin:0 auto;padding:40px 24px;align-items:flex-start}
+.sidebar-nav{width:220px;flex-shrink:0;display:flex;flex-direction:column;gap:2px;position:sticky;top:89px}
+.sidebar-link{padding:.625rem .875rem;border-radius:var(--radius-md);font-size:.9rem;font-weight:500;color:var(--body);transition:background var(--t),color var(--t)}
+.sidebar-link:hover{background:var(--orange-light);color:var(--orange)}
+.sidebar-link.active{background:var(--orange-light);color:var(--orange);font-weight:600}
+.sidebar-link.disabled{color:var(--muted);cursor:default;opacity:.6}
+.sidebar-content{flex:1;min-width:0}
+
+@media(max-width:900px){
+  .sidebar-layout{flex-direction:column;padding:24px 16px}
+  .sidebar-nav{width:100%;position:static;flex-direction:row;flex-wrap:wrap}
+  .stepper-label{display:none}
+}
