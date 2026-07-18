@@ -52,14 +52,14 @@ export default function ListingDetail() {
               to={`/tutors/${tutor._id}`}
               style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28, padding: '16px 20px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', textDecoration: 'none' }}
             >
-              <div className="tutor-avatar" style={{ width: 44, height: 44, fontSize: '.875rem' }}>
+              <div className="tutor-avatar" style={{ width: 44, height: 44, fontSize: '.875rem', flexShrink: 0 }}>
                 {tutor.email?.[0]?.toUpperCase() ?? 'T'}
               </div>
-              <div>
-                <strong style={{ fontSize: '.9375rem', color: 'var(--dark)' }}>{tutor.email}</strong>
-                {tutor.bio && <p style={{ fontSize: '.8125rem', marginTop: 2 }}>{tutor.bio}</p>}
-                <span style={{ fontSize: '.75rem', color: 'var(--orange)', fontWeight: 600 }}>View profile →</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ fontSize: '.9375rem', color: 'var(--dark)', display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{tutor.email}</strong>
+                {tutor.bio && <p style={{ fontSize: '.8125rem', marginTop: 2, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{tutor.bio}</p>}
               </div>
+              <span style={{ fontSize: '.8125rem', color: 'var(--orange)', fontWeight: 600, flexShrink: 0 }}>View profile →</span>
             </Link>
           )}
 

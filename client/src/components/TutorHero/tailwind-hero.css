@@ -1,0 +1,61 @@
+/* Tailwind scoped to the TutorHero component only — theme + utilities, deliberately
+   NO preflight (Tailwind's base reset), so this never touches native element styling
+   used by the rest of the app's hand-written index.css. Only imported from Hero.tsx. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --color-hero-bg: #FAF5F0;
+  --color-hero-orange: #F8862F;
+  --color-hero-green: #678D41;
+  --color-hero-text: #1E1E1E;
+  --color-hero-muted: #6B7280;
+}
+
+@keyframes hero-icon-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+.hero-icon-idle-pulse {
+  animation: hero-icon-pulse 2.6s ease-in-out infinite;
+}
+
+/* Flat, soft organic blobs — corner/edge accents only, no gradient/blur/glow,
+   just a solid flat fill per shape (sage green + warm tan), low contrast. */
+.hero-blob {
+  position: absolute;
+  pointer-events: none;
+}
+
+.hero-blob-top-right {
+  top: 0;
+  right: 15%;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background-color: #F5EAE0;
+  opacity: 1;
+  z-index: 0;
+}
+
+.hero-blob-bottom-right {
+  bottom: 0;
+  right: 0;
+  width: 400px;
+  height: 250px;
+  border-top-left-radius: 100%;
+  background-color: #E2E4CD;
+  opacity: 0.6;
+}
+
+.hero-blob-left {
+  top: 20%;
+  left: 0;
+  width: 150px;
+  height: 350px;
+  border-top-right-radius: 200px;
+  border-bottom-right-radius: 200px;
+  background-color: #C1CBAE;
+  opacity: 0.8;
+}

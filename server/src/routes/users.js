@@ -35,7 +35,7 @@ router.get('/:id/public-profile', async (req, res) => {
     let skills = null;
     if (application) {
       [education, experience, skills] = await Promise.all([
-        application.education_id ? TutorEducation.findById(application.education_id).select('highest_education institution_name field_of_study') : null,
+        application.education_id ? TutorEducation.findById(application.education_id).select('highest_education institution_name field_of_study certifications') : null,
         application.experience_id ? TutorExperience.findById(application.experience_id).select('portfolio_links current_title current_company years_of_professional_experience') : null,
         application.skills_id ? TutorSkills.findById(application.skills_id) : null,
       ]);
@@ -54,6 +54,9 @@ router.get('/:id/public-profile', async (req, res) => {
         display_name: application.personal_info?.display_name,
         professional_headline: application.professional_headline,
         bio: application.bio,
+        // Teaching proof is submitted by the applicant specifically to demonstrate their
+        // teaching ability publicly — unlike TutorVerification, it's meant to be shown.
+        demo_video_youtube_url: application.teaching_proof?.demo_video_youtube_url || null,
         education,
         experience,
         skills,

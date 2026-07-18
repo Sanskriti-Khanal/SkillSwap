@@ -1,37 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import {
-  Mail, GraduationCap, MonitorPlay, BarChart3, Star,
-  DollarSign, Clock, Globe, ExternalLink,
-} from 'lucide-react';
+import { GraduationCap } from 'lucide-react';
 import api, { getErrorMessage } from '../utils/api';
 import StarRating from '../components/StarRating';
-
-const ORBIT_ICONS = [Mail, GraduationCap, MonitorPlay, BarChart3, Star];
-const ORBIT_RADIUS = 110;
-
-function OrbitRing() {
-  return (
-    <div className="tutor-orbit-ring" aria-hidden="true">
-      {ORBIT_ICONS.map((Icon, i) => {
-        const angle = (360 / ORBIT_ICONS.length) * i;
-        return (
-          <div
-            key={i}
-            className="tutor-orbit-item"
-            style={{ transform: `rotate(${angle}deg) translate(${ORBIT_RADIUS}px) rotate(${-angle}deg)` }}
-          >
-            <div className="tutor-orbit-item-inner">
-              <div className="icon-badge icon-badge-orange icon-badge-sm">
-                <Icon aria-hidden="true" />
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+import Hero from '../components/TutorHero/Hero';
 
 export default function TutorProfile() {
   const { id } = useParams();
@@ -60,62 +32,15 @@ export default function TutorProfile() {
   if (loading) return <div className="page"><p>Loading…</p></div>;
   if (!data) return <div className="page"><div className="alert alert-error">{alert?.msg || 'Tutor not found'}</div></div>;
 
-  const { user, profile } = data;
-  const displayName = profile?.display_name || user.email.split('@')[0];
-  const avgRating = reviews.length ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : null;
-  const links = profile?.experience?.portfolio_links || {};
+  const { profile } = data;
 
   return (
     <div className="page fade-up">
       {alert && <div className={`alert ${alert.type}`}>{alert.msg}</div>}
 
-      <div className="tutor-hero">
-        <div className="tutor-orbit-wrap">
-          {user.profile_photo_url ? (
-            <img src={user.profile_photo_url} alt={displayName} className="tutor-hero-photo" />
-          ) : (
-            <div className="tutor-hero-photo">{displayName[0]?.toUpperCase()}</div>
-          )}
-          <OrbitRing />
-        </div>
+      <Hero data={data} reviews={reviews} />
 
-        <h1 style={{ marginBottom: 4 }}>{displayName}</h1>
-        {profile?.professional_headline && (
-          <p style={{ fontSize: '1.0625rem', fontWeight: 500, color: 'var(--dark)' }}>{profile.professional_headline}</p>
-        )}
-
-        <div className="tutor-detail-row">
-          {profile?.skills?.primary_category && (
-            <span className="badge badge-orange" style={{ fontSize: '.8125rem', padding: '6px 14px' }}>{profile.skills.primary_category}</span>
-          )}
-          {avgRating !== null && (
-            <span className="tutor-detail-pill"><StarRating rating={Math.round(avgRating)} size={13} /> {avgRating.toFixed(1)} ({reviews.length})</span>
-          )}
-          {profile?.skills?.hourly_rate != null && (
-            <span className="tutor-detail-pill"><DollarSign className="icon-inline" aria-hidden="true" /> {profile.skills.hourly_rate} {profile.skills.currency}/session</span>
-          )}
-          {profile?.skills?.teaching_mode && (
-            <span className="tutor-detail-pill"><MonitorPlay className="icon-inline" aria-hidden="true" /> {profile.skills.teaching_mode}</span>
-          )}
-          {profile?.skills?.timezone && (
-            <span className="tutor-detail-pill"><Clock className="icon-inline" aria-hidden="true" /> {profile.skills.timezone}</span>
-          )}
-        </div>
-
-        {(profile?.bio || user.bio) && (
-          <p style={{ maxWidth: 640, marginTop: 8 }}>{profile?.bio || user.bio}</p>
-        )}
-
-        {(links.website || links.github || links.linkedin) && (
-          <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-            {links.website && <a href={links.website} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><Globe className="icon-inline" aria-hidden="true" /> Website</a>}
-            {links.github && <a href={links.github} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><ExternalLink className="icon-inline" aria-hidden="true" /> GitHub</a>}
-            {links.linkedin && <a href={links.linkedin} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><ExternalLink className="icon-inline" aria-hidden="true" /> LinkedIn</a>}
-          </div>
-        )}
-      </div>
-
-      <div className="divider" />
+      <div className="divider" style={{ marginTop: 40 }} />
 
       {profile?.skills?.sub_skills?.length > 0 && (
         <>
@@ -139,7 +64,7 @@ export default function TutorProfile() {
         </>
       )}
 
-      <h2 style={{ marginBottom: 20 }}>Listings</h2>
+      <h2 id="tutor-listings" style={{ marginBottom: 20, scrollMarginTop: 90 }}>Listings</h2>
       {listings.length === 0 ? (
         <p style={{ marginBottom: 32 }}>This tutor doesn't have any active listings yet.</p>
       ) : (
