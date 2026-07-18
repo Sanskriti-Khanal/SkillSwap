@@ -21,13 +21,8 @@ export default function Hero({ data, reviews }: HeroProps) {
     >
 
       <div className="relative z-10 flex-1 grid grid-cols-1 items-center gap-12 lg:grid-cols-2 max-w-7xl mx-auto w-full">
-        {/* Left: dynamic content */}
-        <div className="order-2 lg:order-1 flex flex-col justify-center">
-          <DynamicContent activeKey={activeKey} sections={sections} />
-        </div>
-
-        {/* Right: orbiting profile circle */}
-        <div className="order-1 flex justify-center lg:order-2">
+        {/* Left: orbiting profile circle */}
+        <div className="order-1 flex justify-center">
           <TutorCircle
             name={sections.profile.name}
             avatarUrl={sections.profile.avatarUrl}
@@ -35,6 +30,11 @@ export default function Hero({ data, reviews }: HeroProps) {
             activeKey={activeKey}
             onSelect={setActiveKey}
           />
+        </div>
+
+        {/* Right: dynamic content */}
+        <div className="order-2 flex flex-col justify-center">
+          <DynamicContent activeKey={activeKey} sections={sections} />
         </div>
       </div>
     </section>
