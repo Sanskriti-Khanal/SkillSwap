@@ -1,6 +1,4 @@
-import { Printer } from 'lucide-react';
 import type { HeroSections } from './data';
-import CtaButton from './CtaButton';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -64,12 +62,6 @@ export default function ResumeCard({ data }: { data: HeroSections['resume'] }) {
             </ul>
           </Section>
         )}
-      </div>
-
-      <div className="mt-6">
-        <CtaButton onClick={() => window.print()} icon={<Printer size={18} />}>
-          Print / Save as PDF
-        </CtaButton>
       </div>
     </div>
   );

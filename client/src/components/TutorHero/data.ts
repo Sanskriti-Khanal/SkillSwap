@@ -1,5 +1,5 @@
-import type { ComponentType } from 'react';
-import { User, Monitor, Mail, GraduationCap, FileText } from 'lucide-react';
+import type { ComponentType, SVGProps } from 'react';
+import { UserIcon, EnvelopeIcon, AcademicCapIcon, DocumentTextIcon, PlayCircleIcon } from '@heroicons/react/24/solid';
 
 export interface Certification {
   name?: string;
@@ -53,23 +53,25 @@ export interface ReviewItem {
   createdAt: string;
 }
 
-export type SectionKey = 'profile' | 'video' | 'contact' | 'experience' | 'resume';
+export type SectionKey = 'profile' | 'video' | 'education' | 'contact' | 'resume';
 
 export type Accent = 'orange' | 'green';
 
 export interface IconDef {
   key: SectionKey;
   label: string;
-  icon: ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
   accent: Accent;
 }
 
+// Solid (filled) icon glyphs, not outline strokes — matches the flat, colorful
+// icon-illustration look the design calls for, colored per ACCENT_HEX below.
 export const ICON_DEFS: Record<SectionKey, IconDef> = {
-  profile: { key: 'profile', label: 'Meet Your Tutor', icon: User, accent: 'green' },
-  video: { key: 'video', label: 'Watch Demo Class', icon: Monitor, accent: 'orange' },
-  contact: { key: 'contact', label: 'Contact Tutor', icon: Mail, accent: 'orange' },
-  experience: { key: 'experience', label: 'Experience & Skills', icon: GraduationCap, accent: 'orange' },
-  resume: { key: 'resume', label: 'Curriculum Vitae', icon: FileText, accent: 'green' },
+  profile: { key: 'profile', label: 'Meet Your Tutor', icon: UserIcon, accent: 'green' },
+  video: { key: 'video', label: 'Demo Video', icon: PlayCircleIcon, accent: 'orange' },
+  education: { key: 'education', label: 'Education', icon: AcademicCapIcon, accent: 'orange' },
+  contact: { key: 'contact', label: 'Contact Tutor', icon: EnvelopeIcon, accent: 'orange' },
+  resume: { key: 'resume', label: 'Curriculum Vitae', icon: DocumentTextIcon, accent: 'green' },
 };
 
 export const ACCENT_HEX: Record<Accent, string> = {
@@ -77,11 +79,9 @@ export const ACCENT_HEX: Record<Accent, string> = {
   green: '#678D41',
 };
 
-// Fixed "home" angle per icon, evenly spaced around the full circle starting at
-// 12 o'clock — stable regardless of which one is currently active, so an inactive
-// icon always returns to the exact same spot.
 export function homeAngle(index: number, total: number): number {
-  return -90 + (360 / total) * index;
+  const step = 360 / total;
+  return -90 + step * index;
 }
 
 export function toXY(angleDeg: number, radius: number): { x: number; y: number } {
@@ -97,19 +97,19 @@ export interface HeroSections {
     rating?: number;
     reviewCount: number;
     languages?: string[];
+    skills: string[];
     bio?: string;
     bookHref: string;
+    video: { available: boolean; youtubeUrl?: string; thumbnailUrl?: string };
   };
-  video: { available: boolean; youtubeUrl?: string; thumbnailUrl?: string; headline?: string };
-  contact: { available: boolean; email: string; website?: string; github?: string; linkedin?: string };
-  experience: {
+  education: {
     available: boolean;
-    currentTitle?: string;
-    currentCompany?: string;
-    yearsExperience?: number;
-    skills: string[];
+    highestEducation?: string;
+    institution?: string;
+    fieldOfStudy?: string;
     certifications: Certification[];
   };
+  contact: { available: boolean; email: string; website?: string; github?: string; linkedin?: string };
   resume: {
     available: boolean;
     about?: string;
@@ -136,8 +136,8 @@ export function buildHeroSections(data: PublicProfileResponse, reviews: ReviewIt
   const links = profile?.experience?.portfolio_links || {};
   const youtubeId = extractYouTubeId(profile?.demo_video_youtube_url);
 
-  const experienceAvailable = Boolean(
-    profile?.experience?.current_title || (profile?.skills?.sub_skills?.length ?? 0) > 0 || (profile?.education?.certifications?.length ?? 0) > 0
+  const educationAvailable = Boolean(
+    profile?.education?.highest_education || profile?.education?.institution_name || (profile?.education?.certifications?.length ?? 0) > 0
   );
   const resumeAvailable = Boolean(profile && (profile.bio || profile.education || profile.experience || profile.skills));
 
@@ -145,18 +145,29 @@ export function buildHeroSections(data: PublicProfileResponse, reviews: ReviewIt
     profile: {
       name,
       title: profile?.professional_headline,
-      avatarUrl: user.profile_photo_url,
+      avatarUrl: user.profile_photo_url ? (
+        user.profile_photo_url.startsWith('http') || user.profile_photo_url.startsWith('data:') || user.profile_photo_url.startsWith('/')
+          ? user.profile_photo_url 
+          : `/${user.profile_photo_url}`
+      ) : null,
       rating: avgRating,
       reviewCount: reviews.length,
       languages: profile?.skills?.teaching_languages,
+      skills: profile?.skills?.sub_skills || [],
       bio: profile?.bio || user.bio || undefined,
       bookHref: '#tutor-listings',
+      video: {
+        available: Boolean(youtubeId),
+        youtubeUrl: profile?.demo_video_youtube_url || undefined,
+        thumbnailUrl: youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : undefined,
+      },
     },
-    video: {
-      available: Boolean(youtubeId),
-      youtubeUrl: profile?.demo_video_youtube_url || undefined,
-      thumbnailUrl: youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : undefined,
-      headline: profile?.professional_headline,
+    education: {
+      available: educationAvailable,
+      highestEducation: profile?.education?.highest_education,
+      institution: profile?.education?.institution_name,
+      fieldOfStudy: profile?.education?.field_of_study,
+      certifications: profile?.education?.certifications || [],
     },
     contact: {
       available: true, // email is always present
@@ -164,14 +175,6 @@ export function buildHeroSections(data: PublicProfileResponse, reviews: ReviewIt
       website: links.website,
       github: links.github,
       linkedin: links.linkedin,
-    },
-    experience: {
-      available: experienceAvailable,
-      currentTitle: profile?.experience?.current_title,
-      currentCompany: profile?.experience?.current_company,
-      yearsExperience: profile?.experience?.years_of_professional_experience,
-      skills: profile?.skills?.sub_skills || [],
-      certifications: profile?.education?.certifications || [],
     },
     resume: {
       available: resumeAvailable,
@@ -188,12 +191,11 @@ export function buildHeroSections(data: PublicProfileResponse, reviews: ReviewIt
   };
 }
 
-// Which icons actually have real content to show, in spec order.
 export function availableSectionKeys(sections: HeroSections): SectionKey[] {
   const keys: SectionKey[] = ['profile'];
-  if (sections.video.available) keys.push('video');
+  if (sections.profile.video.available) keys.push('video');
+  if (sections.education.available) keys.push('education');
   if (sections.contact.available) keys.push('contact');
-  if (sections.experience.available) keys.push('experience');
   if (sections.resume.available) keys.push('resume');
   return keys;
 }

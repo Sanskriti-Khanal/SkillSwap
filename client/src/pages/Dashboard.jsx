@@ -14,26 +14,28 @@ export default function Dashboard() {
 
   return (
     <div className="page fade-up">
-      <div className="page-header">
-        <div>
+      <div className="dashboard-header">
+        <div className="dashboard-header-left">
           <h1>Dashboard</h1>
-          <p style={{ marginTop: 4 }}>
-            Welcome back{user?.email ? `, ${user.email.split('@')[0]}` : ''}
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--body)', lineHeight: 1.65 }}>
+              Welcome back{user?.email ? `, ${user.email.split('@')[0]}` : ''}
+            </span>
             {user?.role && <span className="badge badge-orange" style={{ marginLeft: 8 }}>{user.role}</span>}
-          </p>
+          </div>
+          {user && isTutor && (
+            <span className="badge badge-green" aria-label="You are a tutor" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', fontSize: '.875rem' }}>
+              <GraduationCap className="icon-inline" aria-hidden="true" />
+              Verified tutor
+            </span>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="dashboard-header-right">
           {user && (
             isTutor ? (
-              <>
-                <span className="badge badge-green" aria-label="You are a tutor" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', fontSize: '.875rem' }}>
-                  <GraduationCap className="icon-inline" aria-hidden="true" />
-                  Verified tutor
-                </span>
-                <Link to="/tutor/dashboard" className="btn btn-secondary" aria-label="Go to tutor dashboard">
-                  Go to Tutor Dashboard
-                </Link>
-              </>
+              <Link to="/tutor/dashboard" className="btn btn-secondary" aria-label="Go to tutor dashboard">
+                Go to Tutor Dashboard
+              </Link>
             ) : (
               <Link to="/tutor/apply" className="btn btn-secondary" aria-label="Apply to become a tutor" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <GraduationCap className="icon-inline" aria-hidden="true" />

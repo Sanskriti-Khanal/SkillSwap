@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { User } from 'lucide-react';
+import { UserIcon } from '@heroicons/react/24/solid';
 import AnimatedRing from './AnimatedRing';
 import { ICON_DEFS, ACCENT_HEX, homeAngle, toXY, type SectionKey } from './data';
 
@@ -42,7 +42,7 @@ export default function TutorCircle({ name, avatarUrl, availableKeys, activeKey,
           <img src={avatarUrl} alt={name} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-gray-50 text-gray-300">
-            <User size={PHOTO_SIZE * 0.45} strokeWidth={1.5} />
+            <UserIcon style={{ width: PHOTO_SIZE * 0.45, height: PHOTO_SIZE * 0.45 }} />
           </div>
         )}
       </motion.div>
@@ -53,7 +53,14 @@ export default function TutorCircle({ name, avatarUrl, availableKeys, activeKey,
         const Icon = def.icon;
         const accentHex = ACCENT_HEX[def.accent];
         const isActive = key === activeKey;
-        const angle = isActive ? ACTIVE_ANGLE : homeAngle(index, availableKeys.length);
+        
+        let activeAngle = 180;
+        if (availableKeys.length === 2) activeAngle = 180;
+        else if (availableKeys.length === 3) activeAngle = 210;
+        else if (availableKeys.length === 4) activeAngle = 135;
+        else if (availableKeys.length === 5) activeAngle = 162;
+
+        const angle = isActive ? activeAngle : homeAngle(index, availableKeys.length);
         const radius = isActive ? ACTIVE_RADIUS : HOME_RADIUS;
         const { x, y } = toXY(angle, radius);
         const btnSize = isActive ? 72 : 60;
@@ -86,7 +93,7 @@ export default function TutorCircle({ name, avatarUrl, availableKeys, activeKey,
                 animationDelay: isActive ? undefined : `${index * 0.3}s`,
               }}
             >
-              <Icon size={isActive ? 30 : 24} strokeWidth={2.5} />
+              <Icon className={isActive ? 'h-[30px] w-[30px]' : 'h-6 w-6'} />
             </span>
             <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100">
               {def.label}

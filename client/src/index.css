@@ -172,6 +172,13 @@ tbody tr:hover td{background:#FAF8F7}
 .page-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:32px}
 .page-header h1{margin:0}
 
+/* Dashboard header: left info stack + right action row, buttons vertically
+   centered against the (taller) left column regardless of how many badges show */
+.dashboard-header{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:32px}
+.dashboard-header-left{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.dashboard-header-left h1{margin:0}
+.dashboard-header-right{display:flex;align-items:center;gap:16px;flex-wrap:wrap;align-self:center}
+
 /* Empty state */
 .empty{text-align:center;padding:80px 24px;color:var(--muted)}
 .empty-icon{font-size:2.5rem;margin-bottom:16px}
@@ -198,6 +205,8 @@ tbody tr:hover td{background:#FAF8F7}
   .listing-grid{grid-template-columns:1fr}
   .stat-grid{grid-template-columns:repeat(2,1fr)}
   .page-header{flex-direction:column;align-items:flex-start}
+  .dashboard-header{flex-direction:column;align-items:flex-start}
+  .dashboard-header-right{align-self:flex-start;margin-top:8px}
   .navbar-nav{display:none}
   .auth-card{padding:32px 24px}
   .table-wrap{overflow-x:auto}

@@ -1,8 +1,16 @@
 /* Tailwind scoped to the TutorHero component only — theme + utilities, deliberately
    NO preflight (Tailwind's base reset), so this never touches native element styling
-   used by the rest of the app's hand-written index.css. Only imported from Hero.tsx. */
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/utilities.css" layer(utilities);
+   used by the rest of the app's hand-written index.css. Only imported from Hero.tsx.
+
+   Deliberately NOT wrapped in `layer(...)`: the app's global index.css has an
+   unlayered `*{margin:0;padding:0}` reset plus element-selector rules (e.g.
+   `textarea{padding:...}`). Per the CSS cascade, unlayered rules always beat
+   layered ones regardless of specificity, so layering these utilities let that
+   global reset silently zero out every Tailwind padding/margin class in this
+   component. Importing unlayered lets Tailwind's class selectors correctly
+   out-specificity the global `*`/element-selector rules instead. */
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";
 
 @theme {
   --color-hero-bg: #FAF5F0;

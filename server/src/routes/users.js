@@ -11,7 +11,9 @@ const TutorApplication = require('../models/TutorApplication');
 const TutorEducation = require('../models/TutorEducation');
 const TutorExperience = require('../models/TutorExperience');
 const TutorSkills = require('../models/TutorSkills');
+const TutorDocuments = require('../models/TutorDocuments');
 const { logEvent } = require('../services/logger');
+const { getSignedDownloadUrl } = require('../config/storage');
 
 const router = express.Router();
 
@@ -30,6 +32,7 @@ router.get('/:id/public-profile', async (req, res) => {
 
     const application = await TutorApplication.findOne({ user_id: user._id, status: 'approved' });
 
+    let profile_photo_url = user.profile_photo_url;
     let education = null;
     let experience = null;
     let skills = null;
@@ -39,6 +42,17 @@ router.get('/:id/public-profile', async (req, res) => {
         application.experience_id ? TutorExperience.findById(application.experience_id).select('portfolio_links current_title current_company years_of_professional_experience') : null,
         application.skills_id ? TutorSkills.findById(application.skills_id) : null,
       ]);
+
+      if (!profile_photo_url) {
+        const doc = await TutorDocuments.findOne({ application_id: application._id, category: 'profile_photo', status: 'uploaded' });
+        if (doc) {
+          try {
+            profile_photo_url = getSignedDownloadUrl(doc.storage_key, doc.format, doc.resource_type, 604800); // 7 days
+          } catch (e) {
+            console.error('Failed to generate signed URL for profile photo:', e);
+          }
+        }
+      }
     }
 
     res.json({
@@ -46,7 +60,7 @@ router.get('/:id/public-profile', async (req, res) => {
         _id: user._id,
         email: user.email,
         role: user.role,
-        profile_photo_url: user.profile_photo_url,
+        profile_photo_url: profile_photo_url,
         bio: user.bio,
         member_since: user.createdAt,
       },

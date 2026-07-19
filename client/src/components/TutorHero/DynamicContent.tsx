@@ -3,7 +3,7 @@ import type { HeroSections, SectionKey } from './data';
 import ProfileCard from './ProfileCard';
 import VideoCard from './VideoCard';
 import ContactCard from './ContactCard';
-import ExperienceCard from './ExperienceCard';
+import EducationCard from './EducationCard';
 import ResumeCard from './ResumeCard';
 
 interface DynamicContentProps {
@@ -21,11 +21,12 @@ export default function DynamicContent({ activeKey, sections }: DynamicContentPr
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -16 }}
           transition={{ duration: 0.5, ease: 'easeInOut' }}
+          className="pl-4 pt-8 md:pl-8 lg:pl-12"
         >
           {activeKey === 'profile' && <ProfileCard data={sections.profile} />}
-          {activeKey === 'video' && <VideoCard data={sections.video} />}
+          {activeKey === 'video' && <VideoCard data={sections.profile.video} />}
+          {activeKey === 'education' && <EducationCard data={sections.education} />}
           {activeKey === 'contact' && <ContactCard data={sections.contact} />}
-          {activeKey === 'experience' && <ExperienceCard data={sections.experience} />}
           {activeKey === 'resume' && <ResumeCard data={sections.resume} />}
         </motion.div>
       </AnimatePresence>
