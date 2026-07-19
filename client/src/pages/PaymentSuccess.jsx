@@ -14,6 +14,7 @@ export default function PaymentSuccess() {
 
   const [status, setStatus] = useState('verifying'); // 'verifying' | 'paid' | 'error'
   const [error, setError] = useState('');
+  const [meetingLink, setMeetingLink] = useState(null);
 
   useEffect(() => {
     if (!bookingId) {
@@ -25,6 +26,7 @@ export default function PaymentSuccess() {
       try {
         const res = await api.post('/payments/verify', { booking_id: bookingId });
         if (res.data.status === 'paid') {
+          setMeetingLink(res.data.meeting_link || null);
           setStatus('paid');
         } else {
           // Not completed — hand off to the cancel/failure landing page with the
@@ -69,8 +71,11 @@ export default function PaymentSuccess() {
           <CheckCircle2 width={32} height={32} strokeWidth={1.75} color="var(--success)" aria-hidden="true" />
         </div>
         <h2 style={{ marginBottom: 8 }}>Payment successful!</h2>
-        <p style={{ marginBottom: 32 }}>Your booking is confirmed. You'll find the details in My Bookings.</p>
-        <button className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={() => navigate('/bookings')}>View my bookings</button>
+        <p style={{ marginBottom: meetingLink ? 16 : 32 }}>Your booking is confirmed. You'll find the details in My Bookings.</p>
+        {meetingLink && (
+          <a href={meetingLink} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-lg" style={{ width: '100%', display: 'block', marginBottom: 16 }}>Join video call</a>
+        )}
+        <button className={`btn btn-lg ${meetingLink ? 'btn-secondary' : 'btn-primary'}`} style={{ width: '100%' }} onClick={() => navigate('/bookings')}>View my bookings</button>
       </div>
     </div>
   );

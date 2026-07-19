@@ -35,6 +35,11 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  // Jitsi Meet room URL, generated once the booking is confirmed
+  meeting_link: {
+    type: String,
+    default: null,
+  },
 }, { timestamps: true });
 
 // SECURITY: Prevents double-booking race condition natively in MongoDB

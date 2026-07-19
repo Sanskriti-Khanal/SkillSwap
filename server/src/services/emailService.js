@@ -79,4 +79,23 @@ async function sendPasswordChangedEmail(to) {
   });
 }
 
-module.exports = { isEmailConfigured, sendEmail, sendPasswordResetEmail, sendPasswordChangedEmail };
+async function sendMeetingLinkEmail(to, { title, meetingLink, requestedTime }) {
+  const when = new Date(requestedTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  return sendEmail({
+    to,
+    subject: `Your SkillSwap session "${title}" is confirmed`,
+    text: `Your session "${title}" is confirmed for ${when}.\n\nJoin the video call here: ${meetingLink}\n\nThis link works right in your browser — no account or app needed.`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+        <h2 style="color:#3C322F">Your session is confirmed</h2>
+        <p style="color:#6B5E58"><strong>${title}</strong><br/>${when}</p>
+        <p style="margin:24px 0">
+          <a href="${meetingLink}" style="background:#F47B20;color:#fff;padding:12px 24px;border-radius:999px;text-decoration:none;font-weight:600">Join video call</a>
+        </p>
+        <p style="color:#9E8F89;font-size:.875rem">This link works right in your browser — no account or app needed.</p>
+      </div>
+    `,
+  });
+}
+
+module.exports = { isEmailConfigured, sendEmail, sendPasswordResetEmail, sendPasswordChangedEmail, sendMeetingLinkEmail };

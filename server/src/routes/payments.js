@@ -4,6 +4,8 @@ const authMiddleware = require('../middleware/auth');
 const requireRole = require('../middleware/rbac');
 const Booking = require('../models/Booking');
 const { logEvent } = require('../services/logger');
+const { generateMeetingLink } = require('../services/jitsiService');
+const { sendMeetingLinkEmail } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -70,18 +72,21 @@ router.post('/verify', authMiddleware, async (req, res) => {
       return res.status(400).json({ msg: 'booking_id is required' });
     }
 
-    const booking = await Booking.findById(booking_id).populate('listing_id');
+    const booking = await Booking.findById(booking_id)
+      .populate('listing_id')
+      .populate('tutor_id', 'email')
+      .populate('learner_id', 'email');
     if (!booking) {
       return res.status(404).json({ msg: 'Booking not found' });
     }
 
-    if (booking.learner_id.toString() !== req.user.id) {
+    if (booking.learner_id._id.toString() !== req.user.id) {
       return res.status(403).json({ msg: 'Forbidden' });
     }
 
     // Idempotent short-circuit — already settled, no need to hit Khalti again
     if (booking.payment_status === 'paid') {
-      return res.json({ status: 'paid' });
+      return res.json({ status: 'paid', meeting_link: booking.meeting_link });
     }
 
     if (!booking.khalti_pidx) {
@@ -98,7 +103,7 @@ router.post('/verify', authMiddleware, async (req, res) => {
       // ever being attached to more than one booking.
       const updated = await Booking.findOneAndUpdate(
         { _id: booking._id, payment_status: { $ne: 'paid' } },
-        { payment_status: 'paid', status: 'confirmed' },
+        { payment_status: 'paid', status: 'confirmed', meeting_link: generateMeetingLink(booking._id) },
         { new: true }
       );
       if (updated) {
@@ -107,8 +112,16 @@ router.post('/verify', authMiddleware, async (req, res) => {
           bookingId: booking._id,
           pidx: booking.khalti_pidx,
         });
+
+        const emailPayload = {
+          title: booking.listing_id.title,
+          meetingLink: updated.meeting_link,
+          requestedTime: booking.requested_time,
+        };
+        sendMeetingLinkEmail(booking.learner_id.email, emailPayload).catch((err) => console.error('Meeting link email (learner) failed:', err.message));
+        sendMeetingLinkEmail(booking.tutor_id.email, emailPayload).catch((err) => console.error('Meeting link email (tutor) failed:', err.message));
       }
-      return res.json({ status: 'paid' });
+      return res.json({ status: 'paid', meeting_link: updated ? updated.meeting_link : booking.meeting_link });
     }
 
     if (['Expired', 'User canceled'].includes(result.status)) {

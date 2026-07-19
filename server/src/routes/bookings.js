@@ -3,7 +3,10 @@ const { body, validationResult } = require('express-validator');
 const authMiddleware = require('../middleware/auth');
 const Booking = require('../models/Booking');
 const Listing = require('../models/Listing');
+const User = require('../models/User');
 const { logEvent } = require('../services/logger');
+const { generateMeetingLink } = require('../services/jitsiService');
+const { sendMeetingLinkEmail } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -138,9 +141,22 @@ router.patch('/:id/confirm', async (req, res) => {
     }
 
     booking.status = 'confirmed';
+    booking.meeting_link = generateMeetingLink(booking._id);
     await booking.save();
 
     logEvent(req.user.id, 'booking.confirmed', { ipAddress: req.ip, bookingId: booking._id });
+
+    // Fire-and-forget confirmation emails — best-effort, must not block or fail the response
+    Promise.all([
+      Listing.findById(booking.listing_id).select('title'),
+      User.findById(booking.tutor_id).select('email'),
+      User.findById(booking.learner_id).select('email'),
+    ]).then(([listing, tutor, learner]) => {
+      const payload = { title: listing?.title, meetingLink: booking.meeting_link, requestedTime: booking.requested_time };
+      if (tutor?.email) sendMeetingLinkEmail(tutor.email, payload).catch((err) => console.error('Meeting link email (tutor) failed:', err.message));
+      if (learner?.email) sendMeetingLinkEmail(learner.email, payload).catch((err) => console.error('Meeting link email (learner) failed:', err.message));
+    }).catch((err) => console.error('Meeting link email lookup failed:', err.message));
+
     res.json(booking);
   } catch (err) {
     console.error(err.message);

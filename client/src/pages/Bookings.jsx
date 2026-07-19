@@ -134,6 +134,9 @@ export default function Bookings() {
                       {b.payment_status === 'unpaid' && b.status === 'pending' && (
                         <button className="btn btn-primary btn-sm" onClick={() => navigate(`/payments?bookingId=${b._id}`)}>Pay now</button>
                       )}
+                      {b.status === 'confirmed' && b.meeting_link && (
+                        <a href={b.meeting_link} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm">Join call</a>
+                      )}
                       {canReview(b) && (
                         <button className="btn btn-secondary btn-sm" onClick={() => setReviewTarget(b)}>Review</button>
                       )}
