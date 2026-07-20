@@ -1,0 +1,54 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+    restart: unless-stopped
+    # Real secrets (JWT_SECRET, ENCRYPTION_KEYS, KHALTI_SECRET_KEY, etc.)
+    # come from server/.env — never bake secrets into the image or commit
+    # them into this file. See server/.env.example for the full list.
+    env_file:
+      - ./server/.env
+    environment:
+      # Overrides server/.env for the containerized topology — inside the
+      # compose network the app reaches MongoDB by service name, not
+      # localhost (which inside the container refers to the server's own
+      # container, not the host machine or the mongo service).
+      MONGO_URI: mongodb://mongo:27017/skillswap
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ./client
+      args:
+        # See client/Dockerfile — these are compile-time (baked into the
+        # static bundle at build), not runtime. Point them at the server
+        # service's published port for local `docker compose up`; override
+        # with real values when building an image for an actual deployment.
+        VITE_API_URL: http://localhost:3000/api
+        VITE_API_ORIGIN: http://localhost:3000
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - server
+
+volumes:
+  mongo_data:
