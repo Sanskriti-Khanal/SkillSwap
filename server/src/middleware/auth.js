@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
+const { alertJwtReuse } = require('../services/securityMonitor');
 
 const getFingerprint = (req) => {
   const userAgent = req.headers['user-agent'] || '';
@@ -22,6 +23,13 @@ module.exports = async function (req, res, next) {
     // Verify fingerprint
     const fingerprint = getFingerprint(req);
     if (decoded.fingerprint !== fingerprint) {
+      // Suspicious-activity: a structurally valid, unexpired access token
+      // being used from a different device/IP than it was issued for — the
+      // token itself is fine, so this specifically means it's being reused
+      // from somewhere it shouldn't be (stolen or shared).
+      alertJwtReuse({
+        userId: decoded.user?.id || null, ip: req.ip, userAgent: req.headers['user-agent'], jti: decoded.jti,
+      });
       return res.status(401).json({ msg: 'Token validation failed (Fingerprint mismatch)' });
     }
 

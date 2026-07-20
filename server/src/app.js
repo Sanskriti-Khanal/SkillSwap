@@ -9,6 +9,7 @@ const securityMiddleware = require('./middleware/security');
 const { apiSlowDown } = require('./middleware/rateLimiter');
 const ipBlock = require('./middleware/ipBlock');
 const { csrfProtection } = require('./middleware/csrf');
+const { accessDeniedMonitor, apiRequestRateMonitor } = require('./middleware/securityMonitor');
 
 
 
@@ -36,6 +37,12 @@ app.use(cors(corsOptions));
 
 // IP Blocking Middleware
 app.use(ipBlock);
+
+// Suspicious-activity monitoring: watches every response for a 403 (see
+// services/securityMonitor.js's repeated-access-denied detector). Mounted
+// globally, ahead of body parsing, so it covers every route including
+// ipBlock's own 403 above — one hook instead of one call site per source.
+app.use(accessDeniedMonitor);
 
 // Parse JSON bodies and cookies (all other routes)
 // SECURITY: 10 kb body size limit — prevents large-payload DoS attacks.
@@ -65,6 +72,14 @@ app.use(sanitizeBody);
 app.get('/', (req, res) => {
   res.json({ message: 'SkillSwap API Foundation is running securely.' });
 });
+
+// Suspicious-activity monitoring: excessive-request-rate detector (in-memory
+// per-IP sliding window — see services/securityMonitor.js). Mounted BEFORE
+// apiSlowDown deliberately: apiSlowDown delays high-volume requests by up to
+// several seconds each, so counting after it would measure the throttled
+// trickle instead of the true incoming rate, making a real burst look
+// artificially spread out and never cross the threshold.
+app.use('/api', apiRequestRateMonitor);
 
 // Apply slow-down to all /api routes
 app.use('/api', apiSlowDown);
