@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
 const { alertJwtReuse } = require('../services/securityMonitor');
+const { isPasswordExpired } = require('../services/passwordPolicy');
 
 const getFingerprint = (req) => {
   const userAgent = req.headers['user-agent'] || '';
@@ -47,10 +48,7 @@ module.exports = async function (req, res, next) {
     }
     req.user.role = user.role;
 
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-
-    if (user.password_changed_at < ninetyDaysAgo) {
+    if (isPasswordExpired(user)) {
       return res.status(403).json({ msg: 'Password expired — please reset' });
     }
 

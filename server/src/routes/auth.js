@@ -1,7 +1,6 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const bcrypt = require('bcrypt');
-const zxcvbn = require('zxcvbn');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const speakeasy = require('speakeasy');
@@ -20,9 +19,9 @@ const {
   recordPasswordResetRequest,
   checkImpossibleTravel,
 } = require('../services/securityMonitor');
+const passwordPolicy = require('../services/passwordPolicy');
 const LoginAttempt = require('../models/LoginAttempt');
 const RevokedToken = require('../models/RevokedToken');
-const { isPasswordPwned } = require('../services/hibpService');
 const { verifyGoogleIdToken } = require('../services/googleAuthService');
 const { sendPasswordResetEmail, sendPasswordChangedEmail } = require('../services/emailService');
 const PasswordResetToken = require('../models/PasswordResetToken');
@@ -33,24 +32,13 @@ const PasswordResetToken = require('../models/PasswordResetToken');
 
 const router = express.Router();
 
-// Validation rules for password
-const passwordValidation = [
-  body('password')
-    .isLength({ min: 12 }).withMessage('Password must be at least 12 characters long')
-    .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
-    .matches(/[a-z]/).withMessage('Password must contain at least one lowercase letter')
-    .matches(/[0-9]/).withMessage('Password must contain at least one number')
-    .matches(/[\W_]/).withMessage('Password must contain at least one special character'),
-  body('email').isEmail().withMessage('Please provide a valid email address').normalizeEmail()
-];
-
 // @route   POST /api/auth/register
 // @desc    Register user
 // @access  Public
-router.post('/register', auditAction('user.register', 'User'), authRateLimiter, captchaMiddleware, passwordValidation, async (req, res) => {
+router.post('/register', auditAction('user.register', 'User'), authRateLimiter, captchaMiddleware, [
+  body('email').isEmail().withMessage('Please provide a valid email address').normalizeEmail(),
+], async (req, res) => {
   const errors = validationResult(req);
-
-
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array() });
   }
@@ -64,16 +52,14 @@ router.post('/register', auditAction('user.register', 'User'), authRateLimiter, 
       return res.status(400).json({ msg: 'User already exists' });
     }
 
-    // Evaluate password strength
-    const strength = zxcvbn(password);
-
-    // SECURITY: k-anonymity breach check — reject passwords found in known breach databases.
-    // Fails open (allows registration) if the HIBP API is unreachable.
-    const pwnedCount = await isPasswordPwned(password);
-    if (pwnedCount > 0) {
-      return res.status(400).json({
-        msg: `This password has appeared in ${pwnedCount.toLocaleString()} data breach(es). Please choose a different password.`
-      });
+    // Single source of truth for password rules — length/complexity, zxcvbn
+    // score threshold, and HIBP breach check. Was previously a bespoke
+    // express-validator regex chain plus a separate, unenforced zxcvbn call
+    // plus a separate HIBP call, each duplicated again in the two
+    // password-reset routes below. See services/passwordPolicy.js.
+    const policyResult = await passwordPolicy.validateNewPassword(password, { userInputs: [email] });
+    if (!policyResult.valid) {
+      return res.status(400).json({ msg: policyResult.errors[0], errors: policyResult.errors });
     }
 
     // Hash password with bcrypt cost factor 12
@@ -101,8 +87,8 @@ router.post('/register', auditAction('user.register', 'User'), authRateLimiter, 
 
     res.status(201).json({
       msg: 'User registered successfully',
-      strengthScore: strength.score,
-      strengthFeedback: strength.feedback
+      strengthScore: policyResult.score,
+      strengthFeedback: policyResult.feedback
     });
 
   } catch (err) {
@@ -542,37 +528,8 @@ router.post('/mfa/verify', async (req, res) => {
   }
 });
 
-// Shared by both the logged-in "change password" route below and the anonymous
-// "reset with token" flow: HIBP breach check, reuse-history check, hash + save.
-// Returns { ok: true } or { ok: false, status, msg } so callers can respond appropriately.
-async function applyNewPassword(user, newPassword) {
-  const pwnedCount = await isPasswordPwned(newPassword);
-  if (pwnedCount > 0) {
-    return {
-      ok: false, status: 400,
-      msg: `This password has appeared in ${pwnedCount.toLocaleString()} data breach(es). Please choose a different password.`,
-    };
-  }
-
-  const history = await PasswordHistory.find({ userId: user.id }).sort({ createdAt: -1 }).limit(5);
-  for (const record of history) {
-    const isMatch = await bcrypt.compare(newPassword, record.password_hash);
-    if (isMatch) {
-      return { ok: false, status: 400, msg: 'Password has been used recently. Please choose a different password.' };
-    }
-  }
-
-  const salt = await bcrypt.genSalt(12);
-  const password_hash = await bcrypt.hash(newPassword, salt);
-
-  user.password_hash = password_hash;
-  user.password_changed_at = Date.now();
-  await user.save();
-
-  await PasswordHistory.create({ userId: user.id, password_hash });
-
-  return { ok: true };
-}
+// applyNewPassword (breach check, reuse-history check, hash + save) now lives
+// in services/passwordPolicy.js, shared by both routes below plus registration.
 
 // @route   POST /api/auth/password/reset
 // @desc    Reset password (requires valid JWT, meaning user is logged in but might be blocked by 403 on other routes)
@@ -610,7 +567,7 @@ router.post('/password/reset', auditAction('user.password_changed', 'User'), [
 
     const { newPassword } = req.body;
 
-    const result = await applyNewPassword(user, newPassword);
+    const result = await passwordPolicy.applyNewPassword(user, newPassword);
     if (!result.ok) { return res.status(result.status).json({ msg: result.msg }); }
 
     res.json({ msg: 'Password updated successfully' });
@@ -711,7 +668,7 @@ router.post('/password/reset-with-token', authRateLimiter, auditAction('user.pas
     res.locals.audit.role = user.role;
     res.locals.audit.resourceId = user._id;
 
-    const result = await applyNewPassword(user, newPassword);
+    const result = await passwordPolicy.applyNewPassword(user, newPassword);
     if (!result.ok) { return res.status(result.status).json({ msg: result.msg }); }
 
     // Single-use — mark spent immediately so the same link can't be replayed.
@@ -728,15 +685,39 @@ router.post('/password/reset-with-token', authRateLimiter, auditAction('user.pas
 });
 
 // @route   POST /api/auth/password-strength
-// @desc    Calculate password strength
+// @desc    Real-time password policy check — complexity rules + zxcvbn score
+//          always; the HIBP breach check only runs when `checkBreach: true`
+//          is sent (the ~200-500ms external call is meant for an on-blur/
+//          on-submit check, not every keystroke while the user is typing).
 // @access  Public
-router.post('/password-strength', (req, res) => {
-  const { password } = req.body;
+// `score`/`feedback` are kept at the top level (not nested under a new key)
+// for backward compatibility with Register.jsx/ResetPassword.jsx, which
+// already read res.data.score / res.data.feedback.warning directly.
+router.post('/password-strength', async (req, res) => {
+  const { password, email, checkBreach } = req.body;
   if (!password) {
-    return res.json({ score: 0, feedback: { warning: '', suggestions: [] } });
+    return res.json({ score: 0, feedback: { warning: '', suggestions: [] }, policy: { valid: false, errors: [] } });
   }
-  const strength = zxcvbn(password);
-  res.json({ score: strength.score, feedback: strength.feedback });
+
+  const complexityErrors = passwordPolicy.checkComplexity(password);
+  const strength = passwordPolicy.evaluateStrength(password, email ? [email] : []);
+  const scoreOk = strength.score >= passwordPolicy.POLICY.minZxcvbnScore;
+
+  let breachCount = null;
+  if (checkBreach && complexityErrors.length === 0 && scoreOk) {
+    breachCount = await passwordPolicy.checkBreached(password);
+  }
+
+  const errors = [...complexityErrors];
+  if (!scoreOk) errors.push(strength.feedback?.warning || 'Password is too weak or easily guessable');
+  if (breachCount > 0) errors.push(`This password has appeared in ${breachCount.toLocaleString()} data breach(es).`);
+
+  res.json({
+    score: strength.score,
+    feedback: strength.feedback,
+    policy: { valid: errors.length === 0, errors, minLength: passwordPolicy.POLICY.minLength },
+    breachCount,
+  });
 });
 
 module.exports = router;
