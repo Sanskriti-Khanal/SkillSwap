@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import khaltiLogo from '../assets/khalti.png';
 
 export default function Payments() {
   const [searchParams] = useSearchParams();
@@ -103,8 +104,9 @@ export default function Payments() {
           >
             {redirecting ? 'Redirecting to Khalti...' : `Pay NPR ${listing?.price_per_session}`}
           </button>
-          <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-            Secured by Khalti
+          <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+            <span>Secured by</span>
+            <img src={khaltiLogo} alt="Khalti" style={{ height: '18px', width: 'auto' }} />
           </div>
         </div>
       )}
