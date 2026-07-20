@@ -16,6 +16,20 @@ const { accessDeniedMonitor, apiRequestRateMonitor } = require('./middleware/sec
 
 const app = express();
 
+// SECURITY: without this, req.ip is the reverse proxy's address in any
+// deployment that sits behind one (Render, the target in .env.production,
+// terminates TLS and proxies to this app) — silently defeating every
+// IP-based control in the codebase at once: authRateLimiter, apiSlowDown,
+// ipBlock, LoginAttempt-based brute-force detection, every SecurityEvent/
+// SecurityAlert threshold detector, the `ip` field on every AuditLog entry,
+// and checkImpossibleTravel's geoip lookup. `1` (not `true`) trusts exactly
+// one proxy hop — trusting an unbounded number would let a client forge its
+// own X-Forwarded-For prefix if there's ever more than one hop in front.
+// See docs/pentest-report.md finding PT-04.
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Connect to MongoDB
 const connectDB = require('./config/db');
 connectDB();
@@ -105,8 +119,14 @@ app.use('/api/reviews', csrfProtection, require('./routes/reviews'));
 // flip real user roles.
 app.use('/api/admin/tutor-applications', csrfProtection, require('./routes/adminTutorApplications'));
 
-// Admin Routes
-app.use('/api/admin', require('./routes/admin'));
+// Admin Routes — CSRF protection applied, matching every other mutating
+// route group (previously the one exception, despite containing the
+// highest-impact mutations in the app: IP blocking, role changes including
+// promotion to admin). Safe to add: the frontend's axios interceptor
+// (client/src/utils/api.js) already attaches X-CSRF-Token on every mutating
+// request regardless of whether the server enforces it. See
+// docs/pentest-report.md finding PT-03.
+app.use('/api/admin', csrfProtection, require('./routes/admin'));
 
 // Payment Routes — CSRF protection applied as defence-in-depth (no webhook: KPG v2
 // has no server-to-server completion callback, so there's no unauthenticated route left)
