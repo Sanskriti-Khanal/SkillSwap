@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcrypt');
 const authMiddleware = require('../middleware/auth');
+const requireOwnership = require('../middleware/requireOwnership');
 const User = require('../models/User');
 const Booking = require('../models/Booking');
 const PasswordHistory = require('../models/PasswordHistory');
@@ -155,29 +156,18 @@ router.get('/me', async (req, res) => {
 
 // @desc    Get user profile
 // @access  Private
-router.get('/:id/profile', async (req, res) => {
-  try {
-    // SECURITY: IDOR prevention — ownership enforced server-side
-    // We enforce that the requested ID matches the authenticated user's ID
-    if (req.params.id !== req.user.id) {
-      return res.status(403).json({ msg: 'Forbidden: You can only view your own profile' });
-    }
-
-    const user = await User.findOne({ _id: req.params.id, _id: req.user.id })
-      .select('-password_hash -mfa_secret');
-
-    if (!user) {
-      return res.status(404).json({ msg: 'Profile not found' });
-    }
-
-    res.json(user);
-  } catch (err) {
-    console.error(err.message);
-    if (err.kind === 'ObjectId') {
-      return res.status(404).json({ msg: 'Profile not found' });
-    }
-    res.status(500).send('Server Error');
-  }
+// SECURITY: previously `User.findOne({ _id: req.params.id, _id: req.user.id })`
+// — a duplicate `_id` key in the same object literal, which JavaScript
+// silently resolves to just the second value. The query itself enforced
+// NOTHING; only the explicit `if` check above it protected this route. Not
+// exploitable as it stood (the check was correct), but one refactor away
+// from a real IDOR if someone ever removed that check believing the query
+// already scoped it. requireOwnership replaces both with one reviewed check.
+router.get('/:id/profile', requireOwnership(User, { ownerFields: '_id', resourceName: 'Profile' }), async (req, res) => {
+  const user = req.resource.toObject();
+  delete user.password_hash;
+  delete user.mfa_secret;
+  res.json(user);
 });
 
 // @route   GET /api/users/me/export

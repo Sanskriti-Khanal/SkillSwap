@@ -7,6 +7,7 @@ const User = require('../models/User');
 const { generateMeetingLink } = require('../services/jitsiService');
 const { sendMeetingLinkEmail } = require('../services/emailService');
 const auditAction = require('../middleware/auditAction');
+const requireOwnership = require('../middleware/requireOwnership');
 
 const router = express.Router();
 
@@ -118,14 +119,9 @@ router.get('/:id', async (req, res) => {
 // @route   PATCH /api/bookings/:id/confirm
 // @desc    Confirm a booking
 // @access  Private (tutor only)
-router.patch('/:id/confirm', auditAction('booking.confirmed', 'Booking'), async (req, res) => {
+router.patch('/:id/confirm', auditAction('booking.confirmed', 'Booking'), requireOwnership(Booking, { ownerFields: 'tutor_id', resourceName: 'Booking' }), async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id);
-    if (!booking) return res.status(404).json({ msg: 'Booking not found' });
-
-    if (booking.tutor_id.toString() !== req.user.id) {
-      return res.status(403).json({ msg: 'Forbidden: Only the tutor can confirm this booking' });
-    }
+    const booking = req.resource;
 
     if (booking.status !== 'pending') {
       return res.status(400).json({ msg: `Cannot confirm a booking that is ${booking.status}` });
@@ -167,14 +163,9 @@ router.patch('/:id/confirm', auditAction('booking.confirmed', 'Booking'), async 
 // @route   PATCH /api/bookings/:id/cancel
 // @desc    Cancel a booking
 // @access  Private
-router.patch('/:id/cancel', auditAction('booking.cancelled', 'Booking'), async (req, res) => {
+router.patch('/:id/cancel', auditAction('booking.cancelled', 'Booking'), requireOwnership(Booking, { ownerFields: ['learner_id', 'tutor_id'], resourceName: 'Booking' }), async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id);
-    if (!booking) return res.status(404).json({ msg: 'Booking not found' });
-
-    if (booking.learner_id.toString() !== req.user.id && booking.tutor_id.toString() !== req.user.id) {
-      return res.status(403).json({ msg: 'Forbidden: You are not authorized to cancel this booking' });
-    }
+    const booking = req.resource;
 
     if (booking.status === 'cancelled' || booking.status === 'completed') {
       return res.status(400).json({ msg: `Cannot cancel a booking that is ${booking.status}` });
