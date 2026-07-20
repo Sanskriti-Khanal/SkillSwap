@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, ShieldAlert } from 'lucide-react';
 import api, { authApi } from '../utils/api';
 import NotificationBell from './NotificationBell';
 
@@ -37,10 +37,16 @@ export default function Navbar() {
           <Link to="/listings"  className={isActive('/listings')}>Browse</Link>
           <Link to="/bookings"  className={isActive('/bookings')}>Bookings</Link>
           {role === 'admin' && (
-            <Link to="/admin/tutor-applications" className={isActive('/admin/tutor-applications')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <ShieldCheck className="icon-inline" aria-hidden="true" />
-              Admin
-            </Link>
+            <>
+              <Link to="/admin/tutor-applications" className={isActive('/admin/tutor-applications')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <ShieldCheck className="icon-inline" aria-hidden="true" />
+                Admin
+              </Link>
+              <Link to="/admin/security-alerts" className={isActive('/admin/security-alerts')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <ShieldAlert className="icon-inline" aria-hidden="true" />
+                Alerts
+              </Link>
+            </>
           )}
         </div>
       )}

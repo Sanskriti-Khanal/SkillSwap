@@ -12,6 +12,7 @@ import TutorApplicationWizard from './pages/TutorApplicationWizard';
 import ApplicationStatus from './pages/ApplicationStatus';
 import AdminTutorApplicationsList from './pages/admin/AdminTutorApplicationsList';
 import AdminTutorApplicationDetail from './pages/admin/AdminTutorApplicationDetail';
+import AdminSecurityAlerts from './pages/admin/AdminSecurityAlerts';
 import TutorDashboardLayout from './pages/tutor-dashboard/TutorDashboardLayout';
 import TutorDashboardOverview from './pages/tutor-dashboard/TutorDashboardOverview';
 import TutorAvailabilitySettings from './pages/tutor-dashboard/TutorAvailabilitySettings';
@@ -62,6 +63,7 @@ function App() {
           <Route element={<RequireAdmin />}>
             <Route path="admin/tutor-applications" element={<AdminTutorApplicationsList />} />
             <Route path="admin/tutor-applications/:id" element={<AdminTutorApplicationDetail />} />
+            <Route path="admin/security-alerts" element={<AdminSecurityAlerts />} />
           </Route>
           <Route path="profile" element={<Profile />} />
           <Route path="listings" element={<Listings />} />
