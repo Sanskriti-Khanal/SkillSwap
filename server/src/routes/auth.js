@@ -473,7 +473,15 @@ router.post('/mfa/setup', authMiddleware, auditAction('user.mfa_setup_initiated'
 // @route   POST /api/auth/mfa/verify
 // @desc    Verify MFA token (used during login)
 // @access  Public
-router.post('/mfa/verify', async (req, res) => {
+// SECURITY: this route takes only { userId, token } — no password, no prior
+// session. It's the second factor, but on its own it's a complete login path:
+// a correct TOTP guess issues full access+refresh tokens. userId is not a
+// secret (it's returned by /users/:id/public-profile, populated tutor_id._id
+// on listings, etc.), so without rate limiting this was a straight brute-force
+// authentication bypass — 1,000,000 possible 6-digit codes, no throttling, no
+// captcha. authRateLimiter matches the same per-IP throttling already applied
+// to /login. See docs/pentest-report.md finding PT-02.
+router.post('/mfa/verify', authRateLimiter, async (req, res) => {
   const { userId, token } = req.body;
 
   try {
