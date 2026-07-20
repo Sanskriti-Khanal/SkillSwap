@@ -50,7 +50,10 @@ router.post('/initiate', authMiddleware, async (req, res) => {
 
     logEvent(req.user.id, 'payment.initiated', {
       ipAddress: req.ip,
-      bookingId: booking._id,
+      role: req.user.role,
+      resource: 'Booking',
+      resourceId: booking._id,
+      status: 'success',
       pidx: result.pidx,
     });
 
@@ -109,7 +112,10 @@ router.post('/verify', authMiddleware, async (req, res) => {
       if (updated) {
         logEvent(req.user.id, 'payment.completed', {
           ipAddress: req.ip,
-          bookingId: booking._id,
+          role: req.user.role,
+          resource: 'Booking',
+          resourceId: booking._id,
+          status: 'success',
           pidx: booking.khalti_pidx,
         });
 
@@ -129,7 +135,10 @@ router.post('/verify', authMiddleware, async (req, res) => {
       await booking.save();
       logEvent(req.user.id, 'payment.failed', {
         ipAddress: req.ip,
-        bookingId: booking._id,
+        role: req.user.role,
+        resource: 'Booking',
+        resourceId: booking._id,
+        status: 'failure',
         khaltiStatus: result.status,
       });
       return res.json({ status: 'failed', khaltiStatus: result.status });
@@ -166,7 +175,10 @@ router.post('/refund/:bookingId', [authMiddleware, requireRole('admin')], async 
 
     logEvent(req.user.id, 'payment.refunded', {
       ipAddress: req.ip,
-      bookingId: booking._id,
+      role: req.user.role,
+      resource: 'Booking',
+      resourceId: booking._id,
+      status: 'success',
     });
 
     res.json({ msg: 'Booking marked as refunded. Issue the refund manually via the Khalti merchant dashboard.' });

@@ -13,6 +13,13 @@ const authMiddleware = require('../middleware/auth');
 const { authRateLimiter } = require('../middleware/rateLimiter');
 const captchaMiddleware = require('../middleware/captcha');
 const { logEvent } = require('../services/logger');
+const auditAction = require('../middleware/auditAction');
+const {
+  alertRepeatedFailedLogins,
+  alertRefreshTokenReuse,
+  recordPasswordResetRequest,
+  checkImpossibleTravel,
+} = require('../services/securityMonitor');
 const LoginAttempt = require('../models/LoginAttempt');
 const RevokedToken = require('../models/RevokedToken');
 const { isPasswordPwned } = require('../services/hibpService');
@@ -40,7 +47,7 @@ const passwordValidation = [
 // @route   POST /api/auth/register
 // @desc    Register user
 // @access  Public
-router.post('/register', authRateLimiter, captchaMiddleware, passwordValidation, async (req, res) => {
+router.post('/register', auditAction('user.register', 'User'), authRateLimiter, captchaMiddleware, passwordValidation, async (req, res) => {
   const errors = validationResult(req);
 
 
@@ -87,11 +94,10 @@ router.post('/register', authRateLimiter, captchaMiddleware, passwordValidation,
       password_hash
     });
 
-    logEvent(user._id, 'user.register', {
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-      email: user.email,
-    });
+    res.locals.audit.userId = user._id;
+    res.locals.audit.role = user.role;
+    res.locals.audit.resourceId = user._id;
+    res.locals.audit.metadata = { email: user.email };
 
     res.status(201).json({
       msg: 'User registered successfully',
@@ -182,6 +188,10 @@ router.post('/login', authRateLimiter, captchaMiddleware, [
       logEvent(user._id, 'user.login_failed', {
         ipAddress: req.ip,
         userAgent: req.headers['user-agent'],
+        role: user.role,
+        resource: 'User',
+        resourceId: user._id,
+        status: 'failure',
         failed_attempts: user.failed_attempts,
       });
 
@@ -189,8 +199,16 @@ router.post('/login', authRateLimiter, captchaMiddleware, [
         logEvent(user._id, 'user.account_locked', {
           ipAddress: req.ip,
           userAgent: req.headers['user-agent'],
+          role: user.role,
+          resource: 'User',
+          resourceId: user._id,
+          status: 'failure',
           locked_until: user.locked_until,
         });
+        // Suspicious-activity: fires past the "more than 10 failed logins"
+        // threshold, reusing this same lockout checkpoint (every 5th failure)
+        // rather than evaluating on every single failed attempt.
+        alertRepeatedFailedLogins(user, req);
       }
 
       // Brute-force detection: record attempt and alert if >= 3 in 10 minutes from this IP
@@ -244,7 +262,12 @@ router.post('/login', authRateLimiter, captchaMiddleware, [
     logEvent(user._id, 'user.login', {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
+      role: user.role,
+      resource: 'User',
+      resourceId: user._id,
+      status: 'success',
     });
+    checkImpossibleTravel(user._id, req.ip, req.headers['user-agent']);
 
     res.json({ accessToken });
   } catch (err) {
@@ -298,7 +321,10 @@ router.post('/google', authRateLimiter, async (req, res) => {
 
       user = new User({ email, google_id: googleId });
       await user.save();
-      logEvent(user._id, 'user.register_google', { ipAddress: req.ip, userAgent: req.headers['user-agent'] });
+      logEvent(user._id, 'user.register_google', {
+        ipAddress: req.ip, userAgent: req.headers['user-agent'],
+        role: user.role, resource: 'User', resourceId: user._id, status: 'success',
+      });
     }
 
     if (user.locked_until && user.locked_until > Date.now()) {
@@ -320,7 +346,11 @@ router.post('/google', authRateLimiter, async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
-    logEvent(user._id, 'user.login_google', { ipAddress: req.ip, userAgent: req.headers['user-agent'] });
+    logEvent(user._id, 'user.login_google', {
+      ipAddress: req.ip, userAgent: req.headers['user-agent'],
+      role: user.role, resource: 'User', resourceId: user._id, status: 'success',
+    });
+    checkImpossibleTravel(user._id, req.ip, req.headers['user-agent']);
     res.json({ accessToken });
   } catch (err) {
     console.error(err.message);
@@ -344,6 +374,12 @@ router.post('/refresh', async (req, res) => {
     if (decoded.jti) {
       const revoked = await RevokedToken.findOne({ jti: decoded.jti });
       if (revoked) {
+        // Suspicious-activity: a refresh token that was already used-and-
+        // rotated (or logged out) is being presented again — the classic
+        // refresh-token-reuse theft signal.
+        alertRefreshTokenReuse({
+          userId: decoded.user?.id || null, ip: req.ip, userAgent: req.headers['user-agent'], jti: decoded.jti,
+        });
         return res.status(401).json({ msg: 'Token has been revoked' });
       }
     }
@@ -382,7 +418,7 @@ router.post('/refresh', async (req, res) => {
 // @route   POST /api/auth/logout
 // @desc    Logout user
 // @access  Public
-router.post('/logout', async (req, res) => {
+router.post('/logout', auditAction('user.logout', 'User'), async (req, res) => {
   const token = req.cookies['__Host-skillswap-session'];
 
   // SECURITY: server-side token revocation on logout.
@@ -392,6 +428,12 @@ router.post('/logout', async (req, res) => {
   if (token) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET || 'refreshSecret123');
+      // No authMiddleware on this route (a stale/expired access token shouldn't
+      // block logout), so req.user is never populated — pull identity for the
+      // audit entry from the refresh token instead.
+      res.locals.audit.userId = decoded.user?.id || null;
+      res.locals.audit.role = decoded.user?.role || null;
+      res.locals.audit.resourceId = decoded.user?.id || null;
       if (decoded.jti) {
         const expiresAt = new Date(decoded.exp * 1000);
         await RevokedToken.create({ jti: decoded.jti, expires_at: expiresAt });
@@ -406,14 +448,13 @@ router.post('/logout', async (req, res) => {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Strict'
   });
-  logEvent(null, 'user.logout', { ipAddress: req.ip, userAgent: req.headers['user-agent'] });
   res.json({ msg: 'Logged out successfully' });
 });
 
 // @route   POST /api/auth/mfa/setup
 // @desc    Setup MFA for logged in user
 // @access  Private
-router.post('/mfa/setup', authMiddleware, async (req, res) => {
+router.post('/mfa/setup', authMiddleware, auditAction('user.mfa_setup_initiated', 'User'), async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -426,6 +467,8 @@ router.post('/mfa/setup', authMiddleware, async (req, res) => {
 
     user.mfa_secret = encrypt(secret.base32);
     await user.save();
+
+    res.locals.audit.resourceId = user._id;
 
     qrcode.toDataURL(secret.otpauth_url, (err, data_url) => {
       if (err) {
@@ -471,7 +514,10 @@ router.post('/mfa/verify', async (req, res) => {
       if (!user.mfa_enabled) {
         user.mfa_enabled = true;
         await user.save();
-        logEvent(user._id, 'user.mfa_enabled', { ipAddress: req.ip, userAgent: req.headers['user-agent'] });
+        logEvent(user._id, 'user.mfa_enabled', {
+          ipAddress: req.ip, userAgent: req.headers['user-agent'],
+          role: user.role, resource: 'User', resourceId: user._id, status: 'success',
+        });
       }
 
       // Generate tokens
@@ -485,6 +531,7 @@ router.post('/mfa/verify', async (req, res) => {
         maxAge: 7 * 24 * 60 * 60 * 1000
       });
 
+      checkImpossibleTravel(user._id, req.ip, req.headers['user-agent']);
       res.json({ accessToken });
     } else {
       res.status(400).json({ msg: 'Invalid token' });
@@ -532,7 +579,7 @@ async function applyNewPassword(user, newPassword) {
 // @access  Private
 // We skip the standard authMiddleware here because authMiddleware blocks requests if password_changed_at > 90 days.
 // We need a custom middleware or just verify token inline for this specific route.
-router.post('/password/reset', [
+router.post('/password/reset', auditAction('user.password_changed', 'User'), [
   body('newPassword')
     .isLength({ min: 12 }).withMessage('Password must be at least 12 characters long')
     .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
@@ -557,16 +604,14 @@ router.post('/password/reset', [
 
     const user = await User.findById(decoded.user.id);
     if (!user) { return res.status(404).json({ msg: 'User not found' }); }
+    res.locals.audit.userId = user._id;
+    res.locals.audit.role = user.role;
+    res.locals.audit.resourceId = user._id;
 
     const { newPassword } = req.body;
 
     const result = await applyNewPassword(user, newPassword);
     if (!result.ok) { return res.status(result.status).json({ msg: result.msg }); }
-
-    logEvent(user._id, 'user.password_changed', {
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
 
     res.json({ msg: 'Password updated successfully' });
 
@@ -586,6 +631,11 @@ router.post('/password/forgot', authRateLimiter, captchaMiddleware, [
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
+
+  // Suspicious-activity: record every request (valid or not — enumeration
+  // sweeps hit nonexistent emails too) and alert if this IP crosses the
+  // threshold, regardless of which branch below the request ends up in.
+  recordPasswordResetRequest(req);
 
   const GENERIC_RESPONSE = { msg: 'If an account with that email exists, we\'ve sent a password reset link.' };
 
@@ -617,6 +667,7 @@ router.post('/password/forgot', authRateLimiter, captchaMiddleware, [
     logEvent(user._id, 'user.password_reset_requested', {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
+      role: user.role, resource: 'User', resourceId: user._id, status: 'success',
     });
 
     res.json(GENERIC_RESPONSE);
@@ -629,7 +680,7 @@ router.post('/password/forgot', authRateLimiter, captchaMiddleware, [
 // @route   POST /api/auth/password/reset-with-token
 // @desc    Redeem a password reset link (no login required) and set a new password.
 // @access  Public
-router.post('/password/reset-with-token', authRateLimiter, [
+router.post('/password/reset-with-token', authRateLimiter, auditAction('user.password_reset_completed', 'User'), [
   body('token', 'Reset token is required').not().isEmpty(),
   body('newPassword')
     .isLength({ min: 12 }).withMessage('Password must be at least 12 characters long')
@@ -656,6 +707,9 @@ router.post('/password/reset-with-token', authRateLimiter, [
 
     const user = await User.findById(resetToken.user_id);
     if (!user || !user.password_hash) { return res.status(400).json(INVALID_MSG); }
+    res.locals.audit.userId = user._id;
+    res.locals.audit.role = user.role;
+    res.locals.audit.resourceId = user._id;
 
     const result = await applyNewPassword(user, newPassword);
     if (!result.ok) { return res.status(result.status).json({ msg: result.msg }); }
@@ -664,10 +718,6 @@ router.post('/password/reset-with-token', authRateLimiter, [
     resetToken.used_at = new Date();
     await resetToken.save();
 
-    logEvent(user._id, 'user.password_reset_completed', {
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
     sendPasswordChangedEmail(user.email).catch((err) => console.error('sendPasswordChangedEmail failed:', err.message));
 
     res.json({ msg: 'Password reset successfully. You can now log in.' });

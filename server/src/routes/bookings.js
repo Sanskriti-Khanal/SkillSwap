@@ -4,9 +4,9 @@ const authMiddleware = require('../middleware/auth');
 const Booking = require('../models/Booking');
 const Listing = require('../models/Listing');
 const User = require('../models/User');
-const { logEvent } = require('../services/logger');
 const { generateMeetingLink } = require('../services/jitsiService');
 const { sendMeetingLinkEmail } = require('../services/emailService');
+const auditAction = require('../middleware/auditAction');
 
 const router = express.Router();
 
@@ -15,7 +15,7 @@ router.use(authMiddleware);
 // @route   POST /api/bookings
 // @desc    Book a session for a listing
 // @access  Private
-router.post('/', [
+router.post('/', auditAction('booking.created', 'Booking'), [
   body('listing_id', 'Listing ID is required').not().isEmpty(),
   body('requested_time', 'Valid requested time is required').isISO8601()
 ], async (req, res) => {
@@ -56,7 +56,8 @@ router.post('/', [
     });
 
     await booking.save();
-    logEvent(req.user.id, 'booking.created', { ipAddress: req.ip, bookingId: booking._id, listingId: listing._id });
+    res.locals.audit.resourceId = booking._id;
+    res.locals.audit.metadata = { listingId: listing._id };
     res.status(201).json(booking);
   } catch (err) {
     // SECURITY: Unique index on (listing_id, requested_time) catches any race
@@ -117,7 +118,7 @@ router.get('/:id', async (req, res) => {
 // @route   PATCH /api/bookings/:id/confirm
 // @desc    Confirm a booking
 // @access  Private (tutor only)
-router.patch('/:id/confirm', async (req, res) => {
+router.patch('/:id/confirm', auditAction('booking.confirmed', 'Booking'), async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
     if (!booking) return res.status(404).json({ msg: 'Booking not found' });
@@ -144,8 +145,6 @@ router.patch('/:id/confirm', async (req, res) => {
     booking.meeting_link = generateMeetingLink(booking._id);
     await booking.save();
 
-    logEvent(req.user.id, 'booking.confirmed', { ipAddress: req.ip, bookingId: booking._id });
-
     // Fire-and-forget confirmation emails — best-effort, must not block or fail the response
     Promise.all([
       Listing.findById(booking.listing_id).select('title'),
@@ -168,7 +167,7 @@ router.patch('/:id/confirm', async (req, res) => {
 // @route   PATCH /api/bookings/:id/cancel
 // @desc    Cancel a booking
 // @access  Private
-router.patch('/:id/cancel', async (req, res) => {
+router.patch('/:id/cancel', auditAction('booking.cancelled', 'Booking'), async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
     if (!booking) return res.status(404).json({ msg: 'Booking not found' });
@@ -184,7 +183,6 @@ router.patch('/:id/cancel', async (req, res) => {
     booking.status = 'cancelled';
     await booking.save();
 
-    logEvent(req.user.id, 'booking.cancelled', { ipAddress: req.ip, bookingId: booking._id });
     res.json(booking);
   } catch (err) {
     console.error(err.message);

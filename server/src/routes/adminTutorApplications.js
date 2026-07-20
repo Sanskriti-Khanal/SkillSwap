@@ -4,7 +4,7 @@ const { body, validationResult } = require('express-validator');
 const authMiddleware = require('../middleware/auth');
 const requireRole = require('../middleware/rbac');
 const { isStorageConfigured, getSignedDownloadUrl, getSignedUrlExpirySeconds } = require('../config/storage');
-const { logEvent } = require('../services/logger');
+const auditAction = require('../middleware/auditAction');
 
 const TutorApplication = require('../models/TutorApplication');
 const TutorVerification = require('../models/TutorVerification');
@@ -110,17 +110,19 @@ router.get('/', async (req, res) => {
 // @route   GET /api/admin/tutor-applications/:id
 // @desc    Full application detail, including identity verification data.
 // @access  Private/Admin
-router.get('/:id', async (req, res) => {
+router.get('/:id', auditAction('admin.tutor_application_viewed', 'TutorApplication'), async (req, res) => {
   try {
     const full = await loadFullApplication(req.params.id);
-    if (!full) return res.status(404).json({ msg: 'Application not found' });
+    if (!full) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Application not found' });
+    }
 
     const reviews = await AdminReview.find({ application_id: req.params.id })
       .populate('reviewer_id', 'email')
       .sort({ createdAt: -1 });
     const history = await ApplicationHistory.find({ application_id: req.params.id }).sort({ createdAt: 1 });
 
-    logEvent(req.user.id, 'admin.tutor_application_viewed', { ipAddress: req.ip, applicationId: req.params.id });
     res.json({ ...full, reviews, history });
   } catch (err) {
     console.error(err.message);
@@ -133,19 +135,21 @@ router.get('/:id', async (req, res) => {
 // @desc    Short-lived signed GET URL for a private document. The only way documents
 //          are ever read back — no public URL is ever returned to a non-admin.
 // @access  Private/Admin
-router.get('/:id/documents/:documentId/signed-url', async (req, res) => {
+router.get('/:id/documents/:documentId/signed-url', auditAction('admin.document_viewed', 'TutorApplication'), async (req, res) => {
   if (!isStorageConfigured()) {
+    res.locals.audit.skip = true; // storage not configured — not a real audit-worthy attempt
     return res.status(503).json({ msg: 'File storage is not configured yet' });
   }
   try {
     const doc = await TutorDocuments.findOne({ _id: req.params.documentId, application_id: req.params.id });
-    if (!doc) return res.status(404).json({ msg: 'Document not found' });
+    if (!doc) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Document not found' });
+    }
 
     const url = getSignedDownloadUrl(doc.storage_key, doc.format, doc.resource_type, getSignedUrlExpirySeconds());
 
-    logEvent(req.user.id, 'admin.document_viewed', {
-      ipAddress: req.ip, applicationId: req.params.id, documentId: doc._id, category: doc.category,
-    });
+    res.locals.audit.metadata = { documentId: doc._id, category: doc.category };
     res.json({ url, expiresIn: getSignedUrlExpirySeconds() });
   } catch (err) {
     console.error(err.message);
@@ -157,11 +161,15 @@ router.get('/:id/documents/:documentId/signed-url', async (req, res) => {
 // @route   PATCH /api/admin/tutor-applications/:id/approve
 // @desc    Approve the application and flip the user's role to tutor.
 // @access  Private/Admin
-router.patch('/:id/approve', async (req, res) => {
+router.patch('/:id/approve', auditAction('admin.tutor_application_approved', 'TutorApplication'), async (req, res) => {
   try {
     const application = await TutorApplication.findById(req.params.id);
-    if (!application) return res.status(404).json({ msg: 'Application not found' });
+    if (!application) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Application not found' });
+    }
     if (!APPROVABLE_STATUSES.includes(application.status)) {
+      res.locals.audit.status = 'failure';
       return res.status(409).json({ msg: `Cannot approve an application with status ${application.status}` });
     }
 
@@ -183,9 +191,7 @@ router.patch('/:id/approve', async (req, res) => {
       'Your tutor dashboard is now available.', application._id
     );
 
-    logEvent(req.user.id, 'admin.tutor_application_approved', {
-      ipAddress: req.ip, applicationId: application._id, targetUserId: user._id, previousRole, newRole: user.role,
-    });
+    res.locals.audit.metadata = { targetUserId: user._id, previousRole, newRole: user.role };
     res.json({ msg: 'Application approved', status: application.status, userRole: user.role });
   } catch (err) {
     console.error(err.message);
@@ -197,7 +203,7 @@ router.patch('/:id/approve', async (req, res) => {
 // @route   PATCH /api/admin/tutor-applications/:id/reject
 // @desc    Reject the application with a reason.
 // @access  Private/Admin
-router.patch('/:id/reject', [
+router.patch('/:id/reject', auditAction('admin.tutor_application_rejected', 'TutorApplication'), [
   body('reason', 'A rejection reason is required').not().isEmpty(),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -205,8 +211,12 @@ router.patch('/:id/reject', [
 
   try {
     const application = await TutorApplication.findById(req.params.id);
-    if (!application) return res.status(404).json({ msg: 'Application not found' });
+    if (!application) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Application not found' });
+    }
     if (!REVIEWABLE_STATUSES.includes(application.status)) {
+      res.locals.audit.status = 'failure';
       return res.status(409).json({ msg: `Cannot reject an application with status ${application.status}` });
     }
 
@@ -217,7 +227,7 @@ router.patch('/:id/reject', [
       `Your tutor application was rejected: ${req.body.reason}`, application._id
     );
 
-    logEvent(req.user.id, 'admin.tutor_application_rejected', { ipAddress: req.ip, applicationId: application._id, reason: req.body.reason });
+    res.locals.audit.metadata = { reason: req.body.reason };
     res.json({ msg: 'Application rejected', status: application.status });
   } catch (err) {
     console.error(err.message);
@@ -229,7 +239,7 @@ router.patch('/:id/reject', [
 // @route   PATCH /api/admin/tutor-applications/:id/request-more-info
 // @desc    Reopen the application for editing with a message to the applicant.
 // @access  Private/Admin
-router.patch('/:id/request-more-info', [
+router.patch('/:id/request-more-info', auditAction('admin.tutor_application_more_info_requested', 'TutorApplication'), [
   body('message', 'A message explaining what is needed is required').not().isEmpty(),
 ], async (req, res) => {
   const errors = validationResult(req);
@@ -237,8 +247,12 @@ router.patch('/:id/request-more-info', [
 
   try {
     const application = await TutorApplication.findById(req.params.id);
-    if (!application) return res.status(404).json({ msg: 'Application not found' });
+    if (!application) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Application not found' });
+    }
     if (!['pending_review', 'under_review'].includes(application.status)) {
+      res.locals.audit.status = 'failure';
       return res.status(409).json({ msg: `Cannot request more info on an application with status ${application.status}` });
     }
 
@@ -249,7 +263,6 @@ router.patch('/:id/request-more-info', [
       req.body.message, application._id
     );
 
-    logEvent(req.user.id, 'admin.tutor_application_more_info_requested', { ipAddress: req.ip, applicationId: application._id });
     res.json({ msg: 'Requested more information', status: application.status });
   } catch (err) {
     console.error(err.message);
@@ -263,14 +276,17 @@ router.patch('/:id/request-more-info', [
 // flag on the relevant sub-document, log an AdminReview + audit entry.
 
 // @route   PATCH /api/admin/tutor-applications/:id/verify-identity
-router.patch('/:id/verify-identity', [
+router.patch('/:id/verify-identity', auditAction('admin.tutor_identity_verified', 'TutorApplication'), [
   body('verified').isBoolean(),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
   try {
     const application = await TutorApplication.findById(req.params.id);
-    if (!application || !application.verification_id) return res.status(404).json({ msg: 'Verification record not found' });
+    if (!application || !application.verification_id) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Verification record not found' });
+    }
 
     const verification = await TutorVerification.findById(application.verification_id);
     verification.identity_verified = req.body.verified;
@@ -279,7 +295,7 @@ router.patch('/:id/verify-identity', [
     await verification.save();
 
     await recordReview(application._id, req.user.id, 'verify_identity', req.body.notes, { verified: req.body.verified });
-    logEvent(req.user.id, 'admin.tutor_identity_verified', { ipAddress: req.ip, applicationId: application._id, verified: req.body.verified });
+    res.locals.audit.metadata = { verified: req.body.verified };
     res.json({ msg: 'Identity verification updated', identity_verified: verification.identity_verified });
   } catch (err) {
     console.error(err.message);
@@ -288,7 +304,7 @@ router.patch('/:id/verify-identity', [
 });
 
 // @route   PATCH /api/admin/tutor-applications/:id/verify-certificates
-router.patch('/:id/verify-certificates', [
+router.patch('/:id/verify-certificates', auditAction('admin.tutor_certificates_verified', 'TutorApplication'), [
   body('documentIds').isArray({ min: 1 }),
   body('verified').isBoolean(),
 ], async (req, res) => {
@@ -301,7 +317,7 @@ router.patch('/:id/verify-certificates', [
       { $set: { status, rejection_reason: req.body.verified ? undefined : req.body.reason } }
     );
     await recordReview(req.params.id, req.user.id, 'verify_certificates', req.body.notes, { documentIds: req.body.documentIds, verified: req.body.verified });
-    logEvent(req.user.id, 'admin.tutor_certificates_verified', { ipAddress: req.ip, applicationId: req.params.id, verified: req.body.verified });
+    res.locals.audit.metadata = { documentIds: req.body.documentIds, verified: req.body.verified };
     res.json({ msg: 'Certificate verification updated' });
   } catch (err) {
     console.error(err.message);
@@ -310,7 +326,7 @@ router.patch('/:id/verify-certificates', [
 });
 
 // @route   PATCH /api/admin/tutor-applications/:id/verify-portfolio
-router.patch('/:id/verify-portfolio', [
+router.patch('/:id/verify-portfolio', auditAction('admin.tutor_portfolio_verified', 'TutorApplication'), [
   body('documentIds').isArray({ min: 1 }),
   body('verified').isBoolean(),
 ], async (req, res) => {
@@ -323,7 +339,7 @@ router.patch('/:id/verify-portfolio', [
       { $set: { status, rejection_reason: req.body.verified ? undefined : req.body.reason } }
     );
     await recordReview(req.params.id, req.user.id, 'verify_portfolio', req.body.notes, { documentIds: req.body.documentIds, verified: req.body.verified });
-    logEvent(req.user.id, 'admin.tutor_portfolio_verified', { ipAddress: req.ip, applicationId: req.params.id, verified: req.body.verified });
+    res.locals.audit.metadata = { documentIds: req.body.documentIds, verified: req.body.verified };
     res.json({ msg: 'Portfolio verification updated' });
   } catch (err) {
     console.error(err.message);
@@ -332,21 +348,24 @@ router.patch('/:id/verify-portfolio', [
 });
 
 // @route   PATCH /api/admin/tutor-applications/:id/verify-experience
-router.patch('/:id/verify-experience', [
+router.patch('/:id/verify-experience', auditAction('admin.tutor_experience_verified', 'TutorApplication'), [
   body('verified').isBoolean(),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
   try {
     const application = await TutorApplication.findById(req.params.id);
-    if (!application || !application.experience_id) return res.status(404).json({ msg: 'Experience record not found' });
+    if (!application || !application.experience_id) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Experience record not found' });
+    }
 
     const experience = await TutorExperience.findById(application.experience_id);
     experience.experience_verified = req.body.verified;
     await experience.save();
 
     await recordReview(application._id, req.user.id, 'verify_experience', req.body.notes, { verified: req.body.verified });
-    logEvent(req.user.id, 'admin.tutor_experience_verified', { ipAddress: req.ip, applicationId: application._id, verified: req.body.verified });
+    res.locals.audit.metadata = { verified: req.body.verified };
     res.json({ msg: 'Experience verification updated', experience_verified: experience.experience_verified });
   } catch (err) {
     console.error(err.message);
@@ -357,20 +376,23 @@ router.patch('/:id/verify-experience', [
 // @route   PATCH /api/admin/tutor-applications/:id/feature
 // @desc    Toggle featured-tutor status.
 // @access  Private/Admin
-router.patch('/:id/feature', [
+router.patch('/:id/feature', auditAction('admin.tutor_featured_toggled', 'TutorApplication'), [
   body('featured').isBoolean(),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
   try {
     const application = await TutorApplication.findById(req.params.id);
-    if (!application) return res.status(404).json({ msg: 'Application not found' });
+    if (!application) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Application not found' });
+    }
 
     application.featured = req.body.featured;
     await application.save();
 
     await recordReview(application._id, req.user.id, req.body.featured ? 'feature' : 'unfeature', req.body.notes);
-    logEvent(req.user.id, 'admin.tutor_featured_toggled', { ipAddress: req.ip, applicationId: application._id, featured: req.body.featured });
+    res.locals.audit.metadata = { featured: req.body.featured };
     res.json({ msg: 'Featured status updated', featured: application.featured });
   } catch (err) {
     console.error(err.message);
@@ -381,15 +403,19 @@ router.patch('/:id/feature', [
 // @route   PATCH /api/admin/tutor-applications/:id/suspend
 // @desc    Reversible hold — demotes the user's role back down.
 // @access  Private/Admin
-router.patch('/:id/suspend', [
+router.patch('/:id/suspend', auditAction('admin.tutor_suspended', 'TutorApplication'), [
   body('reason', 'A suspension reason is required').not().isEmpty(),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
   try {
     const application = await TutorApplication.findById(req.params.id);
-    if (!application) return res.status(404).json({ msg: 'Application not found' });
+    if (!application) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Application not found' });
+    }
     if (application.status !== 'approved') {
+      res.locals.audit.status = 'failure';
       return res.status(409).json({ msg: `Cannot suspend an application with status ${application.status}` });
     }
 
@@ -401,7 +427,7 @@ router.patch('/:id/suspend', [
 
     await transitionStatus(application, 'suspended', req.user.id, req.body.reason);
     await recordReview(application._id, req.user.id, 'suspend', req.body.reason);
-    logEvent(req.user.id, 'admin.tutor_suspended', { ipAddress: req.ip, applicationId: application._id, reason: req.body.reason });
+    res.locals.audit.metadata = { reason: req.body.reason };
     res.json({ msg: 'Tutor suspended', status: application.status });
   } catch (err) {
     console.error(err.message);
@@ -412,15 +438,19 @@ router.patch('/:id/suspend', [
 // @route   PATCH /api/admin/tutor-applications/:id/revoke
 // @desc    Terminal revocation of tutor status.
 // @access  Private/Admin
-router.patch('/:id/revoke', [
+router.patch('/:id/revoke', auditAction('admin.tutor_revoked', 'TutorApplication'), [
   body('reason', 'A revocation reason is required').not().isEmpty(),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) { return res.status(400).json({ errors: errors.array() }); }
   try {
     const application = await TutorApplication.findById(req.params.id);
-    if (!application) return res.status(404).json({ msg: 'Application not found' });
+    if (!application) {
+      res.locals.audit.status = 'failure';
+      return res.status(404).json({ msg: 'Application not found' });
+    }
     if (!['approved', 'suspended'].includes(application.status)) {
+      res.locals.audit.status = 'failure';
       return res.status(409).json({ msg: `Cannot revoke an application with status ${application.status}` });
     }
 
@@ -436,7 +466,7 @@ router.patch('/:id/revoke', [
       application.user_id, 'application_rejected', 'Tutor status revoked',
       `Your tutor status has been revoked: ${req.body.reason}`, application._id
     );
-    logEvent(req.user.id, 'admin.tutor_revoked', { ipAddress: req.ip, applicationId: application._id, reason: req.body.reason });
+    res.locals.audit.metadata = { reason: req.body.reason };
     res.json({ msg: 'Tutor status revoked', status: application.status });
   } catch (err) {
     console.error(err.message);

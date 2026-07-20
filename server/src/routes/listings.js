@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const authMiddleware = require('../middleware/auth');
 const requireRole = require('../middleware/rbac');
 const Listing = require('../models/Listing');
-const { logEvent } = require('../services/logger');
+const auditAction = require('../middleware/auditAction');
 
 const router = express.Router();
 
@@ -13,6 +13,7 @@ const router = express.Router();
 router.post('/', [
   authMiddleware,
   requireRole('tutor', 'both'), // admin is automatically allowed by RBAC
+  auditAction('listing.created', 'Listing'),
   body('title', 'Title is required').not().isEmpty(),
   body('description', 'Description is required').not().isEmpty(),
   body('skill_category', 'Category is required').not().isEmpty(),
@@ -35,7 +36,8 @@ router.post('/', [
     });
 
     await listing.save();
-    logEvent(req.user.id, 'listing.created', { ipAddress: req.ip, listingId: listing._id, title: listing.title });
+    res.locals.audit.resourceId = listing._id;
+    res.locals.audit.metadata = { title: listing.title };
     res.status(201).json(listing);
   } catch (err) {
     console.error(err.message);
@@ -130,7 +132,7 @@ router.get('/:id', async (req, res) => {
 // @route   PATCH /api/listings/:id
 // @desc    Update a listing
 // @access  Private (tutor only, owner only)
-router.patch('/:id', [authMiddleware, requireRole('tutor', 'both')], async (req, res) => {
+router.patch('/:id', [authMiddleware, requireRole('tutor', 'both'), auditAction('listing.updated', 'Listing')], async (req, res) => {
   try {
     const { title, description, skill_category, price_per_session, duration_minutes } = req.body;
 
@@ -149,10 +151,10 @@ router.patch('/:id', [authMiddleware, requireRole('tutor', 'both')], async (req,
     );
 
     if (!listing) {
+      res.locals.audit.status = 'failure';
       return res.status(404).json({ msg: 'Listing not found or you are not authorized to edit it' });
     }
 
-    logEvent(req.user.id, 'listing.updated', { ipAddress: req.ip, listingId: listing._id });
     res.json(listing);
   } catch (err) {
     console.error(err.message);
@@ -164,16 +166,16 @@ router.patch('/:id', [authMiddleware, requireRole('tutor', 'both')], async (req,
 // @route   DELETE /api/listings/:id
 // @desc    Delete a listing
 // @access  Private (tutor only, owner only)
-router.delete('/:id', [authMiddleware, requireRole('tutor', 'both')], async (req, res) => {
+router.delete('/:id', [authMiddleware, requireRole('tutor', 'both'), auditAction('listing.deleted', 'Listing')], async (req, res) => {
   try {
     // Strict ownership check
     const listing = await Listing.findOneAndDelete({ _id: req.params.id, tutor_id: req.user.id });
 
     if (!listing) {
+      res.locals.audit.status = 'failure';
       return res.status(404).json({ msg: 'Listing not found or you are not authorized to delete it' });
     }
 
-    logEvent(req.user.id, 'listing.deleted', { ipAddress: req.ip, listingId: req.params.id });
     res.json({ msg: 'Listing removed' });
   } catch (err) {
     console.error(err.message);
