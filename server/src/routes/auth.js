@@ -7,7 +7,6 @@ const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
 const User = require('../models/User');
 const PasswordHistory = require('../models/PasswordHistory');
-const { encrypt, decrypt } = require('../utils/encryption');
 const authMiddleware = require('../middleware/auth');
 const { authRateLimiter } = require('../middleware/rateLimiter');
 const captchaMiddleware = require('../middleware/captcha');
@@ -47,7 +46,7 @@ router.post('/register', auditAction('user.register', 'User'), authRateLimiter, 
 
   try {
     // Check if user already exists
-    let user = await User.findOne({ email });
+    let user = await User.findByEmail(email);
     if (user) {
       return res.status(400).json({ msg: 'User already exists' });
     }
@@ -139,7 +138,7 @@ router.post('/login', authRateLimiter, captchaMiddleware, [
   
   const { email, password } = req.body;
   try {
-    let user = await User.findOne({ email });
+    let user = await User.findByEmail(email);
     if(!user) { return res.status(400).json({ msg: 'Invalid Credentials' }); }
 
     // Check if account is locked
@@ -292,7 +291,7 @@ router.post('/google', authRateLimiter, async (req, res) => {
     let user = await User.findOne({ google_id: googleId });
 
     if (!user) {
-      const existingLocal = await User.findOne({ email });
+      const existingLocal = await User.findByEmail(email);
       if (existingLocal) {
         // SECURITY: never auto-link a Google identity to a pre-existing local account
         // by email match alone. Local account emails are never verified in this app,
@@ -451,7 +450,7 @@ router.post('/mfa/setup', authMiddleware, auditAction('user.mfa_setup_initiated'
       name: `SkillSwap (${user.email})`
     });
 
-    user.mfa_secret = encrypt(secret.base32);
+    user.mfa_secret = secret.base32; // schema setter encrypts transparently
     await user.save();
 
     res.locals.audit.resourceId = user._id;
@@ -487,7 +486,7 @@ router.post('/mfa/verify', async (req, res) => {
        return res.status(400).json({ msg: 'MFA not setup for this user' });
     }
 
-    const decryptedSecret = decrypt(user.mfa_secret);
+    const decryptedSecret = user.mfa_secret; // schema getter decrypts transparently
 
     const verified = speakeasy.totp.verify({
       secret: decryptedSecret,
@@ -598,7 +597,7 @@ router.post('/password/forgot', authRateLimiter, captchaMiddleware, [
 
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email });
+    const user = await User.findByEmail(email);
 
     // Google-only accounts have no password_hash — nothing to reset. Silently no-op
     // (same generic response) rather than revealing account existence or sign-in method.

@@ -175,18 +175,24 @@ router.get('/:id/profile', requireOwnership(User, { ownerFields: '_id', resource
 // @access  Private
 router.get('/me/export', exportRateLimiter, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).lean();
+    // NOT .lean() — email is encrypted at rest (see models/User.js), and its
+    // decrypt transform is a Mongoose document getter. .lean() returns a
+    // plain object straight from the driver, bypassing getters entirely,
+    // which would export raw ciphertext instead of the user's real email.
+    // .toObject() below applies the same getters explicitly.
+    const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ msg: 'User not found' });
     }
-    
-    // Remove sensitive data before export
-    delete user.password_hash;
-    delete user.mfa_secret;
+
+    const exported = user.toObject();
+    delete exported.password_hash;
+    delete exported.mfa_secret;
+    delete exported.email_lookup_hash;
 
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="user-data-export.json"');
-    res.send(JSON.stringify(user, null, 2));
+    res.send(JSON.stringify(exported, null, 2));
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');
