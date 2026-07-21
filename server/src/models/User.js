@@ -1,27 +1,6 @@
 const mongoose = require('mongoose');
 const { encryptField, decryptField, decryptFieldTolerant, hashForLookup } = require('../utils/fieldEncryption');
 
-// SECURITY: email and mfa_secret are PII/secrets encrypted at rest with
-// AES-256-GCM (see utils/fieldEncryption.js). Both use transparent Mongoose
-// get/set transforms — application code reads/writes `user.email` and
-// `user.mfa_secret` exactly as before; encryption happens on assignment,
-// decryption happens on read, automatically.
-//
-// email specifically also needs to be looked up by exact value (login,
-// registration's duplicate check) — GCM ciphertext is non-deterministic
-// (a random IV per encryption), so `findOne({ email })` can never match
-// against it. `email_lookup_hash` is a deterministic HMAC of the normalized
-// address, used ONLY for equality lookups (see User.findByEmail below);
-// `email` itself stays the source of truth for display.
-//
-// MIGRATION NOTE: this field started out as plaintext. `email`'s getter
-// uses decryptFieldTolerant (returns unrecognized input unchanged rather
-// than throwing) and findByEmail falls back to a raw plaintext match, so
-// accounts created before this shipped keep working — and get opportunistically
-// upgraded to encrypted+hashed the next time findByEmail locates them (see
-// the static below). No flag-day migration required. A batch script
-// (scripts/migrateEncryptPII.js) can also eagerly migrate the rest. Full
-// strategy: docs/key-management.md.
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
@@ -133,21 +112,11 @@ userSchema.statics.findByEmail = async function (email) {
   const byHash = await this.findOne({ email_lookup_hash: hashForLookup(normalized) });
   if (byHash) return byHash;
 
-  // Fallback for accounts created before email encryption shipped: their
-  // stored value is still the raw plaintext string, so a direct equality
-  // match against the (unencrypted-at-rest) field works.
-  //
-  // MUST use the raw driver collection, not `this.findOne({ email })` —
-  // Mongoose applies a SchemaType's custom `set` transform to query filter
-  // values too, not just document assignment. Querying via the model would
-  // silently re-encrypt `normalized` with a fresh random IV before sending
-  // it to MongoDB, which can never match anything (GCM ciphertext is
-  // non-deterministic — confirmed by this exact failure mode in testing).
+
   const rawLegacy = await this.collection.findOne({ email: normalized });
   if (!rawLegacy) return null;
 
-  // Opportunistically re-save so the setter encrypts it and the
-  // pre-validate hook backfills the hash — fully migrated from here on.
+
   const legacy = this.hydrate(rawLegacy);
   legacy.email = normalized; // reassigning re-triggers the encrypting setter
   await legacy.save();

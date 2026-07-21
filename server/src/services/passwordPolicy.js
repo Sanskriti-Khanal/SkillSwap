@@ -6,17 +6,13 @@ const { isPasswordPwned } = require('./hibpService');
 // Single source of truth for password rules — was previously duplicated as
 // three near-identical express-validator chains (register, /password/reset,
 // /password/reset-with-token) plus a separate, unenforced zxcvbn call and a
-// separate HIBP check with its own copy of the same rejection message.
+
 const POLICY = {
   minLength: 12,
   requireUppercase: true,
   requireLowercase: true,
   requireNumber: true,
   requireSpecialChar: true,
-  // zxcvbn score is 0 (guessable) to 4 (very unguessable). 2 ("Fair") is the
-  // reject threshold — strict enough to catch "P@ssw0rd123!" (satisfies every
-  // complexity regex above yet scores 0-1), lenient enough not to reject
-  // legitimate diverse passphrases.
   minZxcvbnScore: 2,
   expiryDays: 90,
   historyDepth: 5,
@@ -53,9 +49,6 @@ async function validateNewPassword(password, { userInputs = [] } = {}) {
   if (strength.score < POLICY.minZxcvbnScore) {
     errors.push(strength.feedback?.warning || 'Password is too weak or easily guessable — try adding an uncommon word or phrase');
   }
-
-  // Skip the network round-trip to HIBP if it's already going to be rejected —
-  // saves the ~200-500ms external call on the common case of a bad password.
   let breachCount = 0;
   if (errors.length === 0) {
     breachCount = await checkBreached(password);
