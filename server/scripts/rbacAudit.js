@@ -83,7 +83,7 @@ async function loginAs(email, password, { skipRegister = false } = {}) {
 }
 
 async function main() {
-  await mongoose.connect(process.env.MONGO_URI);
+  await mongoose.connect(process.env.MONGO_URI, { family: 4 });
   const User = require('../src/models/User');
   const Listing = require('../src/models/Listing');
   const Booking = require('../src/models/Booking');
