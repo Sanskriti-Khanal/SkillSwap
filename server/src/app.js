@@ -26,9 +26,8 @@ const app = express();
 // one proxy hop — trusting an unbounded number would let a client forge its
 // own X-Forwarded-For prefix if there's ever more than one hop in front.
 // See docs/pentest-report.md finding PT-04.
-if (process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', 1);
-}
+// Make this unconditional so it is active in any deployment environment (e.g. staging, preview)
+app.set('trust proxy', 1);
 
 // Connect to MongoDB
 const connectDB = require('./config/db');
@@ -86,6 +85,9 @@ app.use(sanitizeBody);
 app.get('/', (req, res) => {
   res.json({ message: 'SkillSwap API Foundation is running securely.' });
 });
+
+// Temporary debug route to hit through the real deployment to test IP forwarding
+app.get('/debug-ip', (req, res) => res.json({ ip: req.ip, xff: req.headers['x-forwarded-for'] }));
 
 // Suspicious-activity monitoring: excessive-request-rate detector (in-memory
 // per-IP sliding window — see services/securityMonitor.js). Mounted BEFORE
