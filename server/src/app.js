@@ -26,8 +26,12 @@ const app = express();
 // one proxy hop — trusting an unbounded number would let a client forge its
 // own X-Forwarded-For prefix if there's ever more than one hop in front.
 // See docs/pentest-report.md finding PT-04.
-// Make this unconditional so it is active in any deployment environment (e.g. staging, preview)
-app.set('trust proxy', 1);
+// Make this unconditional so it is active in any deployment environment (e.g. staging, preview).
+// Hop count verified live via /debug-ip against the production deployment: this
+// app sits behind two real proxies (CDN edge, then the PaaS's own load balancer),
+// so trusting only 1 hop resolved req.ip to the load balancer's internal address
+// instead of the client. 3 is the empirically-confirmed value for this topology.
+app.set('trust proxy', 3);
 
 // Connect to MongoDB
 const connectDB = require('./config/db');
