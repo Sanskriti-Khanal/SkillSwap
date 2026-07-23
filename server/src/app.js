@@ -90,9 +90,6 @@ app.get('/', (req, res) => {
   res.json({ message: 'SkillSwap API Foundation is running securely.' });
 });
 
-// Temporary debug route to hit through the real deployment to test IP forwarding
-app.get('/debug-ip', (req, res) => res.json({ ip: req.ip, xff: req.headers['x-forwarded-for'] }));
-
 // Suspicious-activity monitoring: excessive-request-rate detector (in-memory
 // per-IP sliding window — see services/securityMonitor.js). Mounted BEFORE
 // apiSlowDown deliberately: apiSlowDown delays high-volume requests by up to
